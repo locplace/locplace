@@ -116,3 +116,32 @@ func (db *DB) CountUniqueRootDomainsWithLOC(ctx context.Context) (int, error) {
 	err := db.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT root_domain_id) FROM loc_records`).Scan(&count)
 	return count, err
 }
+
+// GetAllLOCRecordsForGeoJSON returns all LOC records for GeoJSON export.
+// Returns records without pagination for map rendering.
+func (db *DB) GetAllLOCRecordsForGeoJSON(ctx context.Context) ([]api.PublicLOCRecord, error) {
+	rows, err := db.Pool.Query(ctx, `
+		SELECT l.fqdn, rd.domain, l.raw_record, l.latitude, l.longitude,
+		       l.altitude_m, l.size_m, l.horiz_prec_m, l.vert_prec_m,
+		       l.first_seen_at, l.last_seen_at
+		FROM loc_records l
+		JOIN root_domains rd ON rd.id = l.root_domain_id
+		ORDER BY l.last_seen_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []api.PublicLOCRecord
+	for rows.Next() {
+		var r api.PublicLOCRecord
+		if err := rows.Scan(&r.FQDN, &r.RootDomain, &r.RawRecord, &r.Latitude, &r.Longitude,
+			&r.AltitudeM, &r.SizeM, &r.HorizPrecM, &r.VertPrecM, &r.FirstSeenAt, &r.LastSeenAt); err != nil {
+			return nil, err
+		}
+		records = append(records, r)
+	}
+
+	return records, rows.Err()
+}

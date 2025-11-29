@@ -140,3 +140,24 @@ type StatsResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// --- GeoJSON Types (RFC 7946) ---
+
+// GeoJSONFeatureCollection is a GeoJSON FeatureCollection.
+type GeoJSONFeatureCollection struct {
+	Type     string           `json:"type"` // Always "FeatureCollection"
+	Features []GeoJSONFeature `json:"features"`
+}
+
+// GeoJSONFeature is a GeoJSON Feature with Point geometry.
+type GeoJSONFeature struct {
+	Type       string         `json:"type"` // Always "Feature"
+	Geometry   GeoJSONPoint   `json:"geometry"`
+	Properties map[string]any `json:"properties"`
+}
+
+// GeoJSONPoint is a GeoJSON Point geometry.
+type GeoJSONPoint struct {
+	Type        string    `json:"type"`        // Always "Point"
+	Coordinates []float64 `json:"coordinates"` // [longitude, latitude] or [longitude, latitude, altitude]
+}

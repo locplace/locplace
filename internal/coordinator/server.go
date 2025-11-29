@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/locplace/scanner/frontend"
 	"github.com/locplace/scanner/internal/coordinator/db"
 	"github.com/locplace/scanner/internal/coordinator/handlers"
 	"github.com/locplace/scanner/internal/coordinator/middleware"
@@ -63,6 +64,7 @@ func NewServer(database *db.DB, cfg Config) http.Handler {
 	// Public routes (no authentication)
 	r.Route("/api/public", func(r chi.Router) {
 		r.Get("/records", publicHandlers.ListRecords)
+		r.Get("/records.geojson", publicHandlers.GetRecordsGeoJSON)
 		r.Get("/stats", publicHandlers.GetStats)
 	})
 
@@ -71,6 +73,9 @@ func NewServer(database *db.DB, cfg Config) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok")) // Error is client disconnect, can't recover
 	})
+
+	// Serve frontend (must be last to not override API routes)
+	r.Handle("/*", frontend.Handler())
 
 	return r
 }
