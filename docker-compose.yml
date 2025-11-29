@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        VITE_PROTOMAPS_API_KEY: ${VITE_PROTOMAPS_API_KEY}
     ports:
       - "8080:8080"
     environment:
@@ -32,19 +34,18 @@ services:
       postgres:
         condition: service_healthy
 
-  # Scanner is optional - run separately or uncomment to include
-  # scanner:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.scanner
-  #   environment:
-  #     COORDINATOR_URL: http://coordinator:8080
-  #     SCANNER_TOKEN: ${SCANNER_TOKEN}
-  #     WORKER_COUNT: "4"
-  #     BATCH_SIZE: "3"
-  #     HEARTBEAT_INTERVAL: "30s"
-  #   depends_on:
-  #     - coordinator
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+    environment:
+      COORDINATOR_URL: http://server:8080
+      SCANNER_TOKEN: "be0c275dd271f109204b474de9780bdd0fd9d7cd4ba964781483cd76c6d1cd6b"
+      WORKER_COUNT: "4"
+      BATCH_SIZE: "3"
+      HEARTBEAT_INTERVAL: "30s"
+    depends_on:
+      - server
 
 volumes:
   postgres_data:

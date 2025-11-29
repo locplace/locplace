@@ -23,15 +23,15 @@ import (
 func main() {
 	// Configuration from environment
 	databaseURL := getEnv("DATABASE_URL", "postgres://localhost:5432/locscanner?sslmode=disable")
-	adminAPIKey := getEnv("ADMIN_API_KEY", "changeme")
+	adminAPIKey := os.Getenv("ADMIN_API_KEY")
 	listenAddr := getEnv("LISTEN_ADDR", ":8080")
 	jobTimeout := parseDuration("JOB_TIMEOUT", 10*time.Minute)
 	heartbeatTimeout := parseDuration("HEARTBEAT_TIMEOUT", 2*time.Minute)
 	reaperInterval := parseDuration("REAPER_INTERVAL", 60*time.Second)
 	rescanInterval := parseDuration("RESCAN_INTERVAL", 0) // 0 = no minimum, rescan immediately
 
-	if adminAPIKey == "changeme" {
-		log.Println("WARNING: Using default admin API key. Set ADMIN_API_KEY in production!")
+	if adminAPIKey == "" {
+		log.Fatal("ADMIN_API_KEY environment variable is required")
 	}
 
 	if rescanInterval > 0 {
