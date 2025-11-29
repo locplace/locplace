@@ -12,8 +12,8 @@ env:
   IMAGE_PREFIX: ${{ github.repository_owner }}
 
 jobs:
-  build-coordinator:
-    name: Build Coordinator
+  build-server:
+    name: Build server
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/coordinator
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/server
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -50,7 +50,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.coordinator
+          file: ./Dockerfile.server
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
