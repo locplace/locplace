@@ -44,7 +44,6 @@ services:
       COORDINATOR_URL: http://server:8080
       SCANNER_TOKEN: "be0c275dd271f109204b474de9780bdd0fd9d7cd4ba964781483cd76c6d1cd6b"
       WORKER_COUNT: "4"
-      BATCH_SIZE: "3"
       HEARTBEAT_INTERVAL: "30s"
     depends_on:
       - server
