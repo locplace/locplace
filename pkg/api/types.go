@@ -5,13 +5,41 @@ import "time"
 
 // --- Admin API Types ---
 
-// AddDomainsRequest is the request body for POST /api/admin/domains.
-type AddDomainsRequest struct {
+// DomainSetInfo represents a domain set in API responses.
+type DomainSetInfo struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Source         string    `json:"source"`
+	CreatedAt      time.Time `json:"created_at"`
+	TotalDomains   int       `json:"total_domains"`
+	ScannedDomains int       `json:"scanned_domains"`
+}
+
+// CreateDomainSetRequest is the request body for POST /api/admin/domain-sets.
+type CreateDomainSetRequest struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+// CreateDomainSetResponse is the response for POST /api/admin/domain-sets.
+type CreateDomainSetResponse struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+// ListDomainSetsResponse is the response for GET /api/admin/domain-sets.
+type ListDomainSetsResponse struct {
+	Sets []DomainSetInfo `json:"sets"`
+}
+
+// AddDomainsToSetRequest is the request body for POST /api/admin/domain-sets/{id}/domains.
+type AddDomainsToSetRequest struct {
 	Domains []string `json:"domains"`
 }
 
-// AddDomainsResponse is the response for POST /api/admin/domains.
-type AddDomainsResponse struct {
+// AddDomainsToSetResponse is the response for POST /api/admin/domain-sets/{id}/domains.
+type AddDomainsToSetResponse struct {
 	Inserted   int `json:"inserted"`
 	Duplicates int `json:"duplicates"`
 }

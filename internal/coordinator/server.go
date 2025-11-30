@@ -47,10 +47,13 @@ func NewServer(database *db.DB, cfg Config) http.Handler {
 	// Admin routes (authenticated with API key)
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AdminAuth(cfg.AdminAPIKey))
-		r.Post("/domains", adminHandlers.AddDomains)
 		r.Post("/clients", adminHandlers.RegisterClient)
 		r.Get("/clients", adminHandlers.ListClients)
 		r.Delete("/clients/{id}", adminHandlers.DeleteClient)
+		r.Get("/domain-sets", adminHandlers.ListDomainSets)
+		r.Post("/domain-sets", adminHandlers.CreateDomainSet)
+		r.Delete("/domain-sets/{id}", adminHandlers.DeleteDomainSet)
+		r.Post("/domain-sets/{id}/domains", adminHandlers.AddDomainsToSet)
 	})
 
 	// Scanner routes (authenticated with bearer token)

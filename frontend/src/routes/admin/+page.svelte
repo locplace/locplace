@@ -8,34 +8,54 @@
 		listScanners,
 		createScanner,
 		deleteScanner,
-		addDomains,
+		listDomainSets,
+		createDomainSet,
+		deleteDomainSet,
+		addDomainsToSet,
 		ApiError,
 		type Scanner,
-		type NewScanner
+		type NewScanner,
+		type DomainSet,
+		type NewDomainSet
 	} from '$lib/api';
 
 	let authenticated = $state(false);
 	let apiKeyInput = $state('');
 	let authError = $state('');
 
+	// Scanners state
 	let scanners = $state<Scanner[]>([]);
 	let scannersLoading = $state(false);
 	let scannersError = $state('');
-
 	let newScannerName = $state('');
 	let newScannerResult = $state<NewScanner | null>(null);
-	let createError = $state('');
+	let createScannerError = $state('');
 
+	// Domain sets state
+	let domainSets = $state<DomainSet[]>([]);
+	let domainSetsLoading = $state(false);
+	let domainSetsError = $state('');
+	let newSetName = $state('');
+	let newSetSource = $state('');
+	let newSetResult = $state<NewDomainSet | null>(null);
+	let createSetError = $state('');
+
+	// Domain upload state
+	let selectedSetId = $state('');
 	let domainsInput = $state('');
-	let domainsResult = $state<{ added: number } | null>(null);
+	let domainsResult = $state<{ inserted: number; duplicates: number } | null>(null);
 	let domainsError = $state('');
 
 	onMount(() => {
 		if (getApiKey()) {
 			authenticated = true;
-			loadScanners();
+			loadData();
 		}
 	});
+
+	async function loadData() {
+		await Promise.all([loadScanners(), loadDomainSets()]);
+	}
 
 	async function login() {
 		authError = '';
@@ -49,7 +69,7 @@
 			setApiKey(apiKeyInput.trim());
 			authenticated = true;
 			apiKeyInput = '';
-			loadScanners();
+			loadData();
 		} else {
 			authError = 'Invalid API key';
 		}
@@ -59,8 +79,10 @@
 		clearApiKey();
 		authenticated = false;
 		scanners = [];
+		domainSets = [];
 	}
 
+	// Scanners
 	async function loadScanners() {
 		scannersLoading = true;
 		scannersError = '';
@@ -78,10 +100,10 @@
 	}
 
 	async function handleCreateScanner() {
-		createError = '';
+		createScannerError = '';
 		newScannerResult = null;
 		if (!newScannerName.trim()) {
-			createError = 'Name is required';
+			createScannerError = 'Name is required';
 			return;
 		}
 
@@ -93,7 +115,7 @@
 			if (e instanceof ApiError && e.status === 401) {
 				authenticated = false;
 			} else {
-				createError = e instanceof Error ? e.message : 'Failed to create scanner';
+				createScannerError = e instanceof Error ? e.message : 'Failed to create scanner';
 			}
 		}
 	}
@@ -113,9 +135,77 @@
 		}
 	}
 
+	// Domain Sets
+	async function loadDomainSets() {
+		domainSetsLoading = true;
+		domainSetsError = '';
+		try {
+			domainSets = await listDomainSets();
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 401) {
+				authenticated = false;
+			} else {
+				domainSetsError = e instanceof Error ? e.message : 'Failed to load domain sets';
+			}
+		} finally {
+			domainSetsLoading = false;
+		}
+	}
+
+	async function handleCreateDomainSet() {
+		createSetError = '';
+		newSetResult = null;
+		if (!newSetName.trim()) {
+			createSetError = 'Name is required';
+			return;
+		}
+		if (!newSetSource.trim()) {
+			createSetError = 'Source is required';
+			return;
+		}
+
+		try {
+			newSetResult = await createDomainSet(newSetName.trim(), newSetSource.trim());
+			newSetName = '';
+			newSetSource = '';
+			loadDomainSets();
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 401) {
+				authenticated = false;
+			} else {
+				createSetError = e instanceof Error ? e.message : 'Failed to create domain set';
+			}
+		}
+	}
+
+	async function handleDeleteDomainSet(id: string, name: string) {
+		if (!confirm(`Delete domain set "${name}"? Domains will remain but lose their set association.`))
+			return;
+
+		try {
+			await deleteDomainSet(id);
+			if (selectedSetId === id) {
+				selectedSetId = '';
+			}
+			loadDomainSets();
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 401) {
+				authenticated = false;
+			} else {
+				alert(e instanceof Error ? e.message : 'Failed to delete domain set');
+			}
+		}
+	}
+
+	// Domain upload
 	async function handleAddDomains() {
 		domainsError = '';
 		domainsResult = null;
+
+		if (!selectedSetId) {
+			domainsError = 'Select a domain set first';
+			return;
+		}
 
 		const domains = domainsInput
 			.split(/[\n,]+/)
@@ -128,8 +218,9 @@
 		}
 
 		try {
-			domainsResult = await addDomains(domains);
+			domainsResult = await addDomainsToSet(selectedSetId, domains);
 			domainsInput = '';
+			loadDomainSets();
 		} catch (e) {
 			if (e instanceof ApiError && e.status === 401) {
 				authenticated = false;
@@ -144,6 +235,10 @@
 		const date = new Date(dateStr);
 		return date.toLocaleString();
 	}
+
+	function formatNumber(n: number): string {
+		return n.toLocaleString();
+	}
 </script>
 
 <svelte:head>
@@ -154,7 +249,12 @@
 	{#if !authenticated}
 		<div class="login-container">
 			<h1>Admin Login</h1>
-			<form onsubmit={(e) => { e.preventDefault(); login(); }}>
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					login();
+				}}
+			>
 				<input
 					type="password"
 					bind:value={apiKeyInput}
@@ -172,6 +272,118 @@
 			<h1>LOC Place Admin</h1>
 			<button class="logout" onclick={logout}>Logout</button>
 		</header>
+
+		<section>
+			<h2>Domain Sets</h2>
+			<p class="section-description">
+				Organize domains by source. Create a set, then add domains to it.
+			</p>
+
+			{#if domainSetsLoading}
+				<p>Loading...</p>
+			{:else if domainSetsError}
+				<p class="error">{domainSetsError}</p>
+			{:else if domainSets.length === 0}
+				<p class="muted">No domain sets yet. Create one to start adding domains.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Source</th>
+							<th>Domains</th>
+							<th>Progress</th>
+							<th>Created</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each domainSets as set}
+							<tr>
+								<td><strong>{set.name}</strong></td>
+								<td class="source">{set.source}</td>
+								<td>{formatNumber(set.total_domains)}</td>
+								<td>
+									{#if set.total_domains > 0}
+										<span class="progress">
+											{formatNumber(set.scanned_domains)} / {formatNumber(set.total_domains)}
+											({Math.round((set.scanned_domains / set.total_domains) * 100)}%)
+										</span>
+									{:else}
+										<span class="muted">-</span>
+									{/if}
+								</td>
+								<td>{formatDate(set.created_at)}</td>
+								<td>
+									<button class="delete" onclick={() => handleDeleteDomainSet(set.id, set.name)}>
+										Delete
+									</button>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+
+			<h3>Create Domain Set</h3>
+			<form
+				class="create-set-form"
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleCreateDomainSet();
+				}}
+			>
+				<input type="text" bind:value={newSetName} placeholder="Name (e.g., .com zone file)" />
+				<input type="text" bind:value={newSetSource} placeholder="Source (e.g., ICANN CZDS)" />
+				<button type="submit">Create</button>
+			</form>
+			{#if createSetError}
+				<p class="error">{createSetError}</p>
+			{/if}
+			{#if newSetResult}
+				<p class="success">Created domain set "{newSetResult.name}"</p>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Add Domains</h2>
+
+			<div class="set-selector">
+				<label for="domain-set">Domain Set:</label>
+				<select id="domain-set" bind:value={selectedSetId}>
+					<option value="">-- Select a domain set --</option>
+					{#each domainSets as set}
+						<option value={set.id}>{set.name} ({formatNumber(set.total_domains)} domains)</option>
+					{/each}
+				</select>
+			</div>
+
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleAddDomains();
+				}}
+			>
+				<textarea
+					bind:value={domainsInput}
+					placeholder="Enter domains (one per line or comma-separated)"
+					rows="5"
+					disabled={!selectedSetId}
+				></textarea>
+				<button type="submit" disabled={!selectedSetId}>Add Domains</button>
+			</form>
+			{#if domainsError}
+				<p class="error">{domainsError}</p>
+			{/if}
+			{#if domainsResult}
+				<p class="success">
+					Added {domainsResult.inserted} domain(s)
+					{#if domainsResult.duplicates > 0}
+						({domainsResult.duplicates} duplicates skipped)
+					{/if}
+				</p>
+			{/if}
+		</section>
 
 		<section>
 			<h2>Scanners</h2>
@@ -219,40 +431,24 @@
 			{/if}
 
 			<h3>Add Scanner</h3>
-			<form class="inline-form" onsubmit={(e) => { e.preventDefault(); handleCreateScanner(); }}>
-				<input
-					type="text"
-					bind:value={newScannerName}
-					placeholder="Scanner name"
-				/>
+			<form
+				class="inline-form"
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleCreateScanner();
+				}}
+			>
+				<input type="text" bind:value={newScannerName} placeholder="Scanner name" />
 				<button type="submit">Create</button>
 			</form>
-			{#if createError}
-				<p class="error">{createError}</p>
+			{#if createScannerError}
+				<p class="error">{createScannerError}</p>
 			{/if}
 			{#if newScannerResult}
 				<div class="token-result">
 					<p><strong>Scanner created!</strong> Save this token - it won't be shown again:</p>
 					<code>{newScannerResult.token}</code>
 				</div>
-			{/if}
-		</section>
-
-		<section>
-			<h2>Add Domains</h2>
-			<form onsubmit={(e) => { e.preventDefault(); handleAddDomains(); }}>
-				<textarea
-					bind:value={domainsInput}
-					placeholder="Enter domains (one per line or comma-separated)"
-					rows="5"
-				></textarea>
-				<button type="submit">Add Domains</button>
-			</form>
-			{#if domainsError}
-				<p class="error">{domainsError}</p>
-			{/if}
-			{#if domainsResult}
-				<p class="success">Added {domainsResult.added} domain(s)</p>
 			{/if}
 		</section>
 	{/if}
@@ -322,8 +518,13 @@
 		margin-bottom: 3rem;
 	}
 
-	h2 {
+	.section-description {
+		color: #666;
 		margin-bottom: 1rem;
+	}
+
+	h2 {
+		margin-bottom: 0.5rem;
 		color: #333;
 	}
 
@@ -339,7 +540,8 @@
 		border-collapse: collapse;
 	}
 
-	th, td {
+	th,
+	td {
 		padding: 0.75rem;
 		text-align: left;
 		border-bottom: 1px solid #eee;
@@ -349,6 +551,16 @@
 		font-weight: 600;
 		color: #666;
 		font-size: 0.875rem;
+	}
+
+	.source {
+		color: #666;
+		font-size: 0.875rem;
+	}
+
+	.progress {
+		font-size: 0.875rem;
+		color: #333;
 	}
 
 	.status {
@@ -370,7 +582,35 @@
 		gap: 0.5rem;
 	}
 
-	input[type="text"], input[type="password"] {
+	.create-set-form {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.create-set-form input {
+		flex: 1;
+	}
+
+	.set-selector {
+		margin-bottom: 1rem;
+	}
+
+	.set-selector label {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-weight: 500;
+	}
+
+	.set-selector select {
+		width: 100%;
+		padding: 0.5rem;
+		border: 1px solid #ccc;
+		border-radius: 4px;
+		font-size: 1rem;
+	}
+
+	input[type='text'],
+	input[type='password'] {
 		padding: 0.5rem;
 		border: 1px solid #ccc;
 		border-radius: 4px;
@@ -391,6 +631,11 @@
 		resize: vertical;
 	}
 
+	textarea:disabled {
+		background: #f5f5f5;
+		cursor: not-allowed;
+	}
+
 	button {
 		padding: 0.5rem 1rem;
 		background: #3131dc;
@@ -401,8 +646,13 @@
 		font-size: 1rem;
 	}
 
-	button:hover {
+	button:hover:not(:disabled) {
 		background: #2828b8;
+	}
+
+	button:disabled {
+		background: #999;
+		cursor: not-allowed;
 	}
 
 	button.delete {

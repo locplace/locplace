@@ -63,6 +63,21 @@ export interface NewScanner {
 	token: string;
 }
 
+export interface DomainSet {
+	id: string;
+	name: string;
+	source: string;
+	created_at: string;
+	total_domains: number;
+	scanned_domains: number;
+}
+
+export interface NewDomainSet {
+	id: string;
+	name: string;
+	source: string;
+}
+
 // API functions
 export async function listScanners(): Promise<Scanner[]> {
 	const response = await adminFetch('/api/admin/clients');
@@ -97,4 +112,36 @@ export async function verifyApiKey(key: string): Promise<boolean> {
 		headers: { 'X-Admin-Key': key }
 	});
 	return response.ok;
+}
+
+// Domain Sets API
+export async function listDomainSets(): Promise<DomainSet[]> {
+	const response = await adminFetch('/api/admin/domain-sets');
+	const data = await response.json();
+	return data.sets || [];
+}
+
+export async function createDomainSet(name: string, source: string): Promise<NewDomainSet> {
+	const response = await adminFetch('/api/admin/domain-sets', {
+		method: 'POST',
+		body: JSON.stringify({ name, source })
+	});
+	return response.json();
+}
+
+export async function deleteDomainSet(id: string): Promise<void> {
+	await adminFetch(`/api/admin/domain-sets/${id}`, {
+		method: 'DELETE'
+	});
+}
+
+export async function addDomainsToSet(
+	setId: string,
+	domains: string[]
+): Promise<{ inserted: number; duplicates: number }> {
+	const response = await adminFetch(`/api/admin/domain-sets/${setId}/domains`, {
+		method: 'POST',
+		body: JSON.stringify({ domains })
+	});
+	return response.json();
 }

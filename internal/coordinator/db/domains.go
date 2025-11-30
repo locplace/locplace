@@ -16,26 +16,6 @@ type RootDomain struct {
 	SubdomainsScanned int64
 }
 
-// InsertDomains inserts multiple domains, ignoring duplicates.
-// Returns the count of inserted and duplicate domains.
-func (db *DB) InsertDomains(ctx context.Context, domains []string) (inserted, duplicates int, err error) {
-	for _, domain := range domains {
-		tag, err := db.Pool.Exec(ctx,
-			`INSERT INTO root_domains (domain) VALUES ($1) ON CONFLICT (domain) DO NOTHING`,
-			domain,
-		)
-		if err != nil {
-			return inserted, duplicates, err
-		}
-		if tag.RowsAffected() > 0 {
-			inserted++
-		} else {
-			duplicates++
-		}
-	}
-	return inserted, duplicates, nil
-}
-
 // GetDomainsToScan returns domains that are not currently being scanned,
 // ordered by last_scanned_at (NULL first, then oldest).
 // If rescanInterval == 0, only returns never-scanned domains.

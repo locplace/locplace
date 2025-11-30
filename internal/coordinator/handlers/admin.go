@@ -18,31 +18,6 @@ type AdminHandlers struct {
 	HeartbeatTimeout time.Duration
 }
 
-// AddDomains handles POST /api/admin/domains.
-func (h *AdminHandlers) AddDomains(w http.ResponseWriter, r *http.Request) {
-	var req api.AddDomainsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if len(req.Domains) == 0 {
-		writeError(w, "domains array is required", http.StatusBadRequest)
-		return
-	}
-
-	inserted, duplicates, err := h.DB.InsertDomains(r.Context(), req.Domains)
-	if err != nil {
-		writeError(w, "failed to insert domains", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, api.AddDomainsResponse{
-		Inserted:   inserted,
-		Duplicates: duplicates,
-	})
-}
-
 // RegisterClient handles POST /api/admin/clients.
 func (h *AdminHandlers) RegisterClient(w http.ResponseWriter, r *http.Request) {
 	var req api.RegisterClientRequest
@@ -112,6 +87,121 @@ func (h *AdminHandlers) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CreateDomainSet handles POST /api/admin/domain-sets.
+func (h *AdminHandlers) CreateDomainSet(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateDomainSetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		writeError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if req.Source == "" {
+		writeError(w, "source is required", http.StatusBadRequest)
+		return
+	}
+
+	ds, err := h.DB.CreateDomainSet(r.Context(), req.Name, req.Source)
+	if err != nil {
+		writeError(w, "failed to create domain set", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, api.CreateDomainSetResponse{
+		ID:     ds.ID,
+		Name:   ds.Name,
+		Source: ds.Source,
+	})
+}
+
+// ListDomainSets handles GET /api/admin/domain-sets.
+func (h *AdminHandlers) ListDomainSets(w http.ResponseWriter, r *http.Request) {
+	sets, err := h.DB.ListDomainSets(r.Context())
+	if err != nil {
+		writeError(w, "failed to list domain sets", http.StatusInternalServerError)
+		return
+	}
+
+	resp := api.ListDomainSetsResponse{
+		Sets: make([]api.DomainSetInfo, 0, len(sets)),
+	}
+
+	for _, ds := range sets {
+		resp.Sets = append(resp.Sets, api.DomainSetInfo{
+			ID:             ds.ID,
+			Name:           ds.Name,
+			Source:         ds.Source,
+			CreatedAt:      ds.CreatedAt,
+			TotalDomains:   ds.TotalDomains,
+			ScannedDomains: ds.ScannedDomains,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// DeleteDomainSet handles DELETE /api/admin/domain-sets/{id}.
+func (h *AdminHandlers) DeleteDomainSet(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, "domain set id is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.DB.DeleteDomainSet(r.Context(), id)
+	if err != nil {
+		writeError(w, "domain set not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddDomainsToSet handles POST /api/admin/domain-sets/{id}/domains.
+func (h *AdminHandlers) AddDomainsToSet(w http.ResponseWriter, r *http.Request) {
+	setID := chi.URLParam(r, "id")
+	if setID == "" {
+		writeError(w, "domain set id is required", http.StatusBadRequest)
+		return
+	}
+
+	var req api.AddDomainsToSetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Domains) == 0 {
+		writeError(w, "domains array is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the set exists
+	set, err := h.DB.GetDomainSet(r.Context(), setID)
+	if err != nil {
+		writeError(w, "failed to get domain set", http.StatusInternalServerError)
+		return
+	}
+	if set == nil {
+		writeError(w, "domain set not found", http.StatusNotFound)
+		return
+	}
+
+	inserted, duplicates, err := h.DB.InsertDomainsToSet(r.Context(), setID, req.Domains)
+	if err != nil {
+		writeError(w, "failed to insert domains", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, api.AddDomainsToSetResponse{
+		Inserted:   inserted,
+		Duplicates: duplicates,
+	})
 }
 
 // Helper functions
