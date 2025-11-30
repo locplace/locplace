@@ -28,16 +28,16 @@ func main() {
 	jobTimeout := parseDuration("JOB_TIMEOUT", 10*time.Minute)
 	heartbeatTimeout := parseDuration("HEARTBEAT_TIMEOUT", 2*time.Minute)
 	reaperInterval := parseDuration("REAPER_INTERVAL", 60*time.Second)
-	rescanInterval := parseDuration("RESCAN_INTERVAL", 0) // 0 = no minimum, rescan immediately
+	rescanInterval := parseDuration("RESCAN_INTERVAL", 0) // 0 = scan each domain only once
 
 	if adminAPIKey == "" {
 		log.Fatal("ADMIN_API_KEY environment variable is required")
 	}
 
 	if rescanInterval > 0 {
-		log.Printf("Rescan interval: %s (domains won't be re-scanned until this time passes)", rescanInterval)
+		log.Printf("Rescan interval: %s (domains will be re-scanned after this time)", rescanInterval)
 	} else {
-		log.Println("Rescan interval: disabled (domains can be re-scanned immediately)")
+		log.Println("Rescan interval: disabled (domains will only be scanned once)")
 	}
 
 	// Connect to database

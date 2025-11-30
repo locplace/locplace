@@ -38,7 +38,8 @@ func (db *DB) InsertDomains(ctx context.Context, domains []string) (inserted, du
 
 // GetDomainsToScan returns domains that are not currently being scanned,
 // ordered by last_scanned_at (NULL first, then oldest).
-// If rescanInterval > 0, domains scanned within that duration are excluded.
+// If rescanInterval == 0, only returns never-scanned domains.
+// If rescanInterval > 0, also returns domains not scanned within that duration.
 func (db *DB) GetDomainsToScan(ctx context.Context, clientID string, count int, rescanInterval time.Duration) ([]string, error) {
 	// Use a transaction to atomically select and assign domains
 	tx, err := db.Pool.Begin(ctx)
@@ -47,10 +48,10 @@ func (db *DB) GetDomainsToScan(ctx context.Context, clientID string, count int, 
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // Rollback after commit returns error, which is expected
 
-	// Build query - optionally exclude recently scanned domains
+	// Build query based on rescan interval
 	var rows pgx.Rows
 	if rescanInterval > 0 {
-		// Exclude domains scanned within the rescan interval
+		// Include domains not scanned within the rescan interval
 		rows, err = tx.Query(ctx, `
 			SELECT rd.id, rd.domain
 			FROM root_domains rd
@@ -63,14 +64,15 @@ func (db *DB) GetDomainsToScan(ctx context.Context, clientID string, count int, 
 			FOR UPDATE OF rd SKIP LOCKED
 		`, count, rescanInterval.String())
 	} else {
-		// No rescan interval - return all eligible domains
+		// rescanInterval == 0: only return never-scanned domains
 		rows, err = tx.Query(ctx, `
 			SELECT rd.id, rd.domain
 			FROM root_domains rd
 			WHERE NOT EXISTS (
 				SELECT 1 FROM active_scans s WHERE s.root_domain_id = rd.id
 			)
-			ORDER BY rd.last_scanned_at NULLS FIRST, rd.created_at
+			AND rd.last_scanned_at IS NULL
+			ORDER BY rd.created_at
 			LIMIT $1
 			FOR UPDATE OF rd SKIP LOCKED
 		`, count)

@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"log"
+	"math"
 	"time"
 
 	"github.com/locplace/scanner/pkg/api"
@@ -15,6 +16,7 @@ type WorkerConfig struct {
 	DNSConfig       DNSConfig
 	RetryDelay      time.Duration
 	EmptyQueueDelay time.Duration
+	MaxBackoff      time.Duration
 }
 
 // DefaultWorkerConfig returns the default worker configuration.
@@ -25,6 +27,7 @@ func DefaultWorkerConfig() WorkerConfig {
 		DNSConfig:       DefaultDNSConfig(),
 		RetryDelay:      5 * time.Second,
 		EmptyQueueDelay: 30 * time.Second,
+		MaxBackoff:      5 * time.Minute,
 	}
 }
 
@@ -36,6 +39,9 @@ type Worker struct {
 	Tracker     *DomainTracker
 	Subfinder   *Subfinder
 	DNS         *DNSScanner
+
+	// Circuit breaker state
+	consecutiveErrors int
 }
 
 // NewWorker creates a new worker.
@@ -50,6 +56,29 @@ func NewWorker(id int, config WorkerConfig, coordinator *CoordinatorClient, trac
 	}
 }
 
+// backoffDelay calculates exponential backoff delay based on consecutive errors.
+func (w *Worker) backoffDelay() time.Duration {
+	if w.consecutiveErrors == 0 {
+		return 0
+	}
+	// Exponential backoff: baseDelay * 2^(errors-1), capped at maxBackoff
+	delay := float64(w.Config.RetryDelay) * math.Pow(2, float64(w.consecutiveErrors-1))
+	if delay > float64(w.Config.MaxBackoff) {
+		delay = float64(w.Config.MaxBackoff)
+	}
+	return time.Duration(delay)
+}
+
+// recordError increments the consecutive error count.
+func (w *Worker) recordError() {
+	w.consecutiveErrors++
+}
+
+// resetErrors resets the consecutive error count.
+func (w *Worker) resetErrors() {
+	w.consecutiveErrors = 0
+}
+
 // Run starts the worker loop. It blocks until the context is canceled.
 func (w *Worker) Run(ctx context.Context) {
 	log.Printf("[Worker %d] Started", w.ID)
@@ -62,19 +91,29 @@ func (w *Worker) Run(ctx context.Context) {
 		default:
 		}
 
-		// Get domains to scan
-		domains, err := w.Coordinator.GetJobs(ctx, w.Config.BatchSize)
-		if err != nil {
-			log.Printf("[Worker %d] Failed to get jobs: %v", w.ID, err)
+		// Apply backoff if we have consecutive errors
+		if backoff := w.backoffDelay(); backoff > 0 {
+			log.Printf("[Worker %d] Backing off for %v after %d consecutive errors",
+				w.ID, backoff, w.consecutiveErrors)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(w.Config.RetryDelay):
+			case <-time.After(backoff):
 			}
+		}
+
+		// Get domains to scan
+		domains, err := w.Coordinator.GetJobs(ctx, w.Config.BatchSize)
+		if err != nil {
+			w.recordError()
+			log.Printf("[Worker %d] Failed to get jobs: %v (consecutive errors: %d)",
+				w.ID, err, w.consecutiveErrors)
 			continue
 		}
 
 		if len(domains) == 0 {
+			// Empty queue is not an error, reset backoff
+			w.resetErrors()
 			log.Printf("[Worker %d] No domains available, waiting...", w.ID)
 			select {
 			case <-ctx.Done():
@@ -100,8 +139,11 @@ func (w *Worker) Run(ctx context.Context) {
 
 			// Submit result immediately
 			if err := w.Coordinator.SubmitResults(ctx, []api.DomainResult{result}); err != nil {
-				log.Printf("[Worker %d] Failed to submit results for %s: %v", w.ID, domain, err)
+				w.recordError()
+				log.Printf("[Worker %d] Failed to submit results for %s: %v (consecutive errors: %d)",
+					w.ID, domain, err, w.consecutiveErrors)
 			} else {
+				w.resetErrors()
 				log.Printf("[Worker %d] Submitted results for %s: %d subdomains, %d LOC records",
 					w.ID, domain, result.SubdomainsScanned, len(result.LOCRecords))
 			}
