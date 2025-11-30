@@ -410,8 +410,8 @@
 							<tr>
 								<td>{scanner.name}</td>
 								<td>
-									<span class="status" class:active={scanner.is_active}>
-										{scanner.is_active ? 'Active' : 'Inactive'}
+									<span class="status" class:active={scanner.is_alive}>
+										{scanner.is_alive ? 'Active' : 'Inactive'}
 									</span>
 								</td>
 								<td>{formatDate(scanner.last_heartbeat)}</td>

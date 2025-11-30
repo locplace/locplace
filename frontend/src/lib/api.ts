@@ -54,7 +54,7 @@ export interface Scanner {
 	name: string;
 	created_at: string;
 	last_heartbeat: string | null;
-	is_active: boolean;
+	is_alive: boolean;
 }
 
 export interface NewScanner {
