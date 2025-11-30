@@ -23,10 +23,12 @@ services:
         VITE_PROTOMAPS_API_KEY: ${VITE_PROTOMAPS_API_KEY}
     ports:
       - "8080:8080"
+      - "9090:9090"
     environment:
       DATABASE_URL: postgres://locscanner:locscanner@postgres:5432/locscanner?sslmode=disable
       ADMIN_API_KEY: ${ADMIN_API_KEY:-secret-admin-key}
       LISTEN_ADDR: ":8080"
+      METRICS_ADDR: ":9090"
       JOB_TIMEOUT: "10m"
       HEARTBEAT_TIMEOUT: "2m"
       REAPER_INTERVAL: "60s"

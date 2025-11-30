@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/locplace/scanner/internal/coordinator/db"
+	"github.com/locplace/scanner/internal/coordinator/metrics"
 	"github.com/locplace/scanner/internal/coordinator/middleware"
 	"github.com/locplace/scanner/pkg/api"
 )
@@ -111,6 +112,7 @@ func (h *ScannerHandlers) SubmitResults(w http.ResponseWriter, r *http.Request) 
 		}
 
 		// Store LOC records with deduplication
+		locCount := 0
 		for _, loc := range result.LOCRecords {
 			// Skip subdomain records that match the root domain's LOC
 			if rootLOCRecord != "" && loc.FQDN != result.Domain && loc.RawRecord == rootLOCRecord {
@@ -119,6 +121,7 @@ func (h *ScannerHandlers) SubmitResults(w http.ResponseWriter, r *http.Request) 
 			if err := h.DB.UpsertLOCRecord(r.Context(), domain.ID, loc); err != nil {
 				continue
 			}
+			locCount++
 		}
 
 		// Mark domain as scanned and update subdomain count
@@ -132,6 +135,11 @@ func (h *ScannerHandlers) SubmitResults(w http.ResponseWriter, r *http.Request) 
 		}
 
 		accepted++
+
+		// Update metrics counters
+		metrics.ScanCompletionsTotal.Inc()
+		metrics.SubdomainsCheckedTotal.Add(float64(result.SubdomainsScanned))
+		metrics.LOCDiscoveriesTotal.Add(float64(locCount))
 	}
 
 	writeJSON(w, http.StatusOK, api.SubmitResultsResponse{Accepted: accepted})

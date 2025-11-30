@@ -13,9 +13,11 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/locplace/scanner/internal/coordinator"
 	"github.com/locplace/scanner/internal/coordinator/db"
+	"github.com/locplace/scanner/internal/coordinator/metrics"
 	"github.com/locplace/scanner/internal/coordinator/reaper"
 	"github.com/locplace/scanner/migrations"
 )
@@ -25,6 +27,8 @@ func main() {
 	databaseURL := getEnv("DATABASE_URL", "postgres://localhost:5432/locscanner?sslmode=disable")
 	adminAPIKey := os.Getenv("ADMIN_API_KEY")
 	listenAddr := getEnv("LISTEN_ADDR", ":8080")
+	metricsAddr := getEnv("METRICS_ADDR", ":9090")
+	metricsInterval := parseDuration("METRICS_INTERVAL", 15*time.Second)
 	jobTimeout := parseDuration("JOB_TIMEOUT", 10*time.Minute)
 	heartbeatTimeout := parseDuration("HEARTBEAT_TIMEOUT", 2*time.Minute)
 	reaperInterval := parseDuration("REAPER_INTERVAL", 60*time.Second)
@@ -33,6 +37,9 @@ func main() {
 	if adminAPIKey == "" {
 		log.Fatal("ADMIN_API_KEY environment variable is required")
 	}
+
+	// Register Prometheus metrics
+	metrics.Register()
 
 	if rescanInterval > 0 {
 		log.Printf("Rescan interval: %s (domains will be re-scanned after this time)", rescanInterval)
@@ -62,26 +69,47 @@ func main() {
 	}
 	handler := coordinator.NewServer(database, cfg)
 
+	// Wrap with metrics middleware
 	server := &http.Server{
 		Addr:         listenAddr,
-		Handler:      handler,
+		Handler:      metrics.Middleware(handler),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	// Start reaper in background
-	reaperCtx, cancelReaper := context.WithCancel(context.Background())
-	defer cancelReaper()
+	// Create background context for all goroutines
+	bgCtx, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
 
+	// Start metrics updater
+	metricsUpdater := metrics.NewUpdater(database, metrics.UpdaterConfig{
+		Interval:         metricsInterval,
+		HeartbeatTimeout: heartbeatTimeout,
+	})
+	go metricsUpdater.Run(bgCtx)
+
+	// Start metrics HTTP server
+	metricsServer := &http.Server{
+		Addr:    metricsAddr,
+		Handler: promhttp.Handler(),
+	}
+	go func() {
+		log.Printf("Metrics server listening on %s", metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("Metrics server error: %v", err)
+		}
+	}()
+
+	// Start reaper
 	r := &reaper.Reaper{
 		DB:               database,
 		Interval:         reaperInterval,
 		JobTimeout:       jobTimeout,
 		HeartbeatTimeout: heartbeatTimeout,
 	}
-	go r.Run(reaperCtx)
+	go r.Run(bgCtx)
 
-	// Start server
+	// Start main server
 	go func() {
 		log.Printf("Coordinator listening on %s", listenAddr)
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
@@ -95,13 +123,17 @@ func main() {
 	<-stop
 
 	log.Println("Shutting down...")
-	cancelReaper()
+	cancelBg() // Stop all background goroutines
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Shutdown both servers
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Shutdown error: %v", err)
+		log.Printf("Server shutdown error: %v", err)
+	}
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Metrics server shutdown error: %v", err)
 	}
 	log.Println("Goodbye")
 }

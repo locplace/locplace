@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/locplace/scanner/internal/coordinator/db"
+	"github.com/locplace/scanner/internal/coordinator/metrics"
 )
 
 // Reaper periodically releases stale scan assignments.
@@ -31,12 +32,14 @@ func (r *Reaper) Run(ctx context.Context) {
 			log.Println("Reaper stopped")
 			return
 		case <-ticker.C:
+			metrics.ReaperRunsTotal.Inc()
 			released, err := r.DB.ReleaseStaleScans(ctx, r.JobTimeout, r.HeartbeatTimeout)
 			if err != nil {
 				log.Printf("Reaper error: %v", err)
 				continue
 			}
 			if released > 0 {
+				metrics.ReaperDomainsReleasedTotal.Add(float64(released))
 				log.Printf("Reaper released %d stale scans", released)
 			}
 		}
