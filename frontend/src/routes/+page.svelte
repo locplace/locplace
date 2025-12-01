@@ -6,26 +6,36 @@
 	let mapContainer: HTMLDivElement;
 	let map: maplibregl.Map;
 
-	// Protomaps API key - get yours at https://protomaps.com/api
-	const PROTOMAPS_API_KEY = import.meta.env.VITE_PROTOMAPS_API_KEY || 'YOUR_API_KEY_HERE';
+	function getStyleUrl(): string {
+		const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		return `https://tiles.immich.cloud/v1/style/${isDark ? 'dark' : 'light'}.json`;
+	}
 
 	onMount(() => {
-		const styleUrl = `https://api.protomaps.com/styles/v5/light/en.json?key=${PROTOMAPS_API_KEY}`;
-
 		map = new maplibregl.Map({
 			container: mapContainer,
-			style: styleUrl,
+			style: getStyleUrl(),
 			center: [0, 30],
 			zoom: 2
 		});
 
 		map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
+		// Listen for theme changes
+		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+		const handleThemeChange = () => {
+			map.setStyle(getStyleUrl());
+			// Re-add LOC records after style change
+			map.once('style.load', loadLOCRecords);
+		};
+		mediaQuery.addEventListener('change', handleThemeChange);
+
 		map.on('load', async () => {
 			await loadLOCRecords();
 		});
 
 		return () => {
+			mediaQuery.removeEventListener('change', handleThemeChange);
 			map?.remove();
 		};
 	});
