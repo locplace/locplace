@@ -43,7 +43,6 @@ type Worker struct {
 
 	// Circuit breaker state
 	consecutiveErrors int
-	lastErrorLogged   time.Time // Rate limit error logging
 }
 
 // NewWorker creates a new worker.
@@ -71,24 +70,19 @@ func (w *Worker) backoffDelay() time.Duration {
 	return time.Duration(delay)
 }
 
-// recordError increments the consecutive error count and logs if appropriate.
-// Returns true if the error should be logged (rate limited to once per 30 seconds).
+// recordError increments the consecutive error count.
+// Returns true if this is the first error (entering error state).
 func (w *Worker) recordError() bool {
 	w.consecutiveErrors++
-	// Log on first error, then rate limit to every 30 seconds
-	if w.consecutiveErrors == 1 || time.Since(w.lastErrorLogged) > 30*time.Second {
-		w.lastErrorLogged = time.Now()
-		return true
-	}
-	return false
+	return w.consecutiveErrors == 1
 }
 
-// resetErrors resets the consecutive error count and logs recovery if needed.
-func (w *Worker) resetErrors() {
-	if w.consecutiveErrors > 0 {
-		log.Printf("[Worker %d] Connection recovered after %d consecutive errors", w.ID, w.consecutiveErrors)
-	}
+// resetErrors resets the consecutive error count.
+// Returns the previous error count (0 if we weren't in error state).
+func (w *Worker) resetErrors() int {
+	prev := w.consecutiveErrors
 	w.consecutiveErrors = 0
+	return prev
 }
 
 // Run starts the worker loop. It blocks until the context is canceled.
@@ -118,15 +112,17 @@ func (w *Worker) Run(ctx context.Context) {
 		domains, err := w.Coordinator.GetJobs(ctx, w.Config.BatchSize)
 		if err != nil {
 			if w.recordError() {
-				log.Printf("[Worker %d] Failed to get jobs: %v (consecutive errors: %d)",
-					w.ID, err, w.consecutiveErrors)
+				// First error - log it, subsequent errors will just backoff silently
+				log.Printf("[Worker %d] Connection error: %v (entering backoff)", w.ID, err)
 			}
 			continue
 		}
 
 		if len(domains) == 0 {
 			// Empty queue is not an error, reset backoff
-			w.resetErrors()
+			if prev := w.resetErrors(); prev > 0 {
+				log.Printf("[Worker %d] Connection recovered after %d errors", w.ID, prev)
+			}
 			// Add jitter (0.5x to 1.5x) to avoid thundering herd
 			jitter := 0.5 + rand.Float64()
 			delay := time.Duration(float64(w.Config.EmptyQueueDelay) * jitter)
@@ -153,16 +149,42 @@ func (w *Worker) Run(ctx context.Context) {
 
 			result := w.processDomain(ctx, domain)
 
-			// Submit result immediately
-			if err := w.Coordinator.SubmitResults(ctx, []api.DomainResult{result}); err != nil {
-				if w.recordError() {
-					log.Printf("[Worker %d] Failed to submit results for %s: %v (consecutive errors: %d)",
-						w.ID, domain, err, w.consecutiveErrors)
+			// Submit result with retries to avoid losing data
+			submitted := false
+			for attempt := 1; attempt <= 3; attempt++ {
+				err := w.Coordinator.SubmitResults(ctx, []api.DomainResult{result})
+				if err == nil {
+					if prev := w.resetErrors(); prev > 0 {
+						log.Printf("[Worker %d] Connection recovered after %d errors", w.ID, prev)
+					}
+					log.Printf("[Worker %d] Submitted results for %s: %d subdomains, %d LOC records",
+						w.ID, domain, result.SubdomainsScanned, len(result.LOCRecords))
+					submitted = true
+					break
 				}
-			} else {
-				w.resetErrors()
-				log.Printf("[Worker %d] Submitted results for %s: %d subdomains, %d LOC records",
-					w.ID, domain, result.SubdomainsScanned, len(result.LOCRecords))
+
+				if attempt < 3 {
+					// Wait before retry with exponential backoff
+					retryDelay := time.Duration(attempt) * 5 * time.Second
+					log.Printf("[Worker %d] Submit failed for %s (attempt %d/3): %v, retrying in %s",
+						w.ID, domain, attempt, err, retryDelay)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(retryDelay):
+					}
+				} else {
+					// Final attempt failed
+					if w.recordError() {
+						log.Printf("[Worker %d] Submit failed for %s after 3 attempts: %v (entering backoff)",
+							w.ID, domain, err)
+					}
+				}
+			}
+
+			if !submitted {
+				log.Printf("[Worker %d] WARNING: Lost results for %s (%d LOC records)",
+					w.ID, domain, len(result.LOCRecords))
 			}
 
 			// Remove from tracker

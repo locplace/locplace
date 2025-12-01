@@ -111,9 +111,8 @@ func (c *CoordinatorClient) SubmitResults(ctx context.Context, results []api.Dom
 		return err
 	}
 
-	// Use a longer timeout for submitting results (2 minutes instead of 30s)
-	// Large subdomain scans can produce significant payloads
-	submitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	// Use a longer timeout for submitting results (60s instead of 30s)
+	submitCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(submitCtx, "POST", c.BaseURL+"/api/scanner/results", bytes.NewReader(body))

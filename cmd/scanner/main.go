@@ -82,17 +82,34 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	// Run scanner in background
+	done := make(chan error, 1)
 	go func() {
-		<-stop
-		log.Println("Shutting down...")
-		cancel()
+		done <- s.Run(ctx)
 	}()
 
-	// Run scanner
-	if err := s.Run(ctx); err != nil {
-		log.Fatalf("Scanner error: %v", err)
+	// Wait for signal or scanner completion
+	select {
+	case sig := <-sigChan:
+		log.Printf("Received %v signal, initiating graceful shutdown...", sig)
+		cancel()
+
+		// Wait for scanner to finish with timeout
+		select {
+		case <-done:
+			log.Println("Scanner stopped gracefully")
+		case <-time.After(30 * time.Second):
+			log.Println("Shutdown timeout exceeded, forcing exit")
+		case sig := <-sigChan:
+			log.Printf("Received second %v signal, forcing exit", sig)
+		}
+
+	case err := <-done:
+		if err != nil {
+			log.Fatalf("Scanner error: %v", err)
+		}
 	}
 }

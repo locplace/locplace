@@ -108,3 +108,10 @@
 </script>
 
 <div id="map" bind:this={mapContainer}></div>
+
+<style>
+	/* Prevent scroll on map page - it should fill viewport */
+	:global(html), :global(body) {
+		overflow: hidden;
+	}
+</style>

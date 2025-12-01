@@ -300,50 +300,52 @@
 			{:else if domainSets.length === 0}
 				<p class="muted">No domain sets yet. Create one to start adding domains.</p>
 			{:else}
-				<table>
-					<thead>
-						<tr>
-							<th>Name</th>
-							<th>Source</th>
-							<th>Domains</th>
-							<th>Progress</th>
-							<th>Created</th>
-							<th>Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each domainSets as set}
+				<div class="table-wrapper">
+					<table>
+						<thead>
 							<tr>
-								<td><strong>{set.name}</strong></td>
-								<td class="source">{set.source}</td>
-								<td>{formatNumber(set.total_domains)}</td>
-								<td>
-									{#if set.total_domains > 0}
-										<span class="progress">
-											{formatNumber(set.scanned_domains)} / {formatNumber(set.total_domains)}
-											({Math.round((set.scanned_domains / set.total_domains) * 100)}%)
-										</span>
-									{:else}
-										<span class="muted">-</span>
-									{/if}
-								</td>
-								<td>{formatDate(set.created_at)}</td>
-								<td class="actions">
-									<button
-										class="bump"
-										onclick={() => handleBumpDomainSet(set.id, set.name)}
-										title="Move unscanned domains to front of queue"
-									>
-										Bump
-									</button>
-									<button class="delete" onclick={() => handleDeleteDomainSet(set.id, set.name)}>
-										Delete
-									</button>
-								</td>
+								<th>Name</th>
+								<th>Source</th>
+								<th>Domains</th>
+								<th>Progress</th>
+								<th>Created</th>
+								<th>Actions</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each domainSets as set}
+								<tr>
+									<td><strong>{set.name}</strong></td>
+									<td class="source">{set.source}</td>
+									<td>{formatNumber(set.total_domains)}</td>
+									<td>
+										{#if set.total_domains > 0}
+											<span class="progress">
+												{formatNumber(set.scanned_domains)} / {formatNumber(set.total_domains)}
+												({Math.round((set.scanned_domains / set.total_domains) * 100)}%)
+											</span>
+										{:else}
+											<span class="muted">-</span>
+										{/if}
+									</td>
+									<td>{formatDate(set.created_at)}</td>
+									<td class="actions">
+										<button
+											class="bump"
+											onclick={() => handleBumpDomainSet(set.id, set.name)}
+											title="Move unscanned domains to front of queue"
+										>
+											Bump
+										</button>
+										<button class="delete" onclick={() => handleDeleteDomainSet(set.id, set.name)}>
+											Delete
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
 			{/if}
 
 			<h3>Create Domain Set</h3>
@@ -416,39 +418,41 @@
 			{:else if scanners.length === 0}
 				<p class="muted">No scanners registered</p>
 			{:else}
-				<table>
-					<thead>
-						<tr>
-							<th>Name</th>
-							<th>Status</th>
-							<th>Last Heartbeat</th>
-							<th>Created</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each scanners as scanner}
+				<div class="table-wrapper">
+					<table>
+						<thead>
 							<tr>
-								<td>{scanner.name}</td>
-								<td>
-									<span class="status" class:active={scanner.is_alive}>
-										{scanner.is_alive ? 'Active' : 'Inactive'}
-									</span>
-								</td>
-								<td>{formatDate(scanner.last_heartbeat)}</td>
-								<td>{formatDate(scanner.created_at)}</td>
-								<td>
-									<button
-										class="delete"
-										onclick={() => handleDeleteScanner(scanner.id, scanner.name)}
-									>
-										Delete
-									</button>
-								</td>
+								<th>Name</th>
+								<th>Status</th>
+								<th>Last Heartbeat</th>
+								<th>Created</th>
+								<th></th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each scanners as scanner}
+								<tr>
+									<td>{scanner.name}</td>
+									<td>
+										<span class="status" class:active={scanner.is_alive}>
+											{scanner.is_alive ? 'Active' : 'Inactive'}
+										</span>
+									</td>
+									<td>{formatDate(scanner.last_heartbeat)}</td>
+									<td>{formatDate(scanner.created_at)}</td>
+									<td>
+										<button
+											class="delete"
+											onclick={() => handleDeleteScanner(scanner.id, scanner.name)}
+										>
+											Delete
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
 			{/if}
 
 			<h3>Add Scanner</h3>
@@ -554,6 +558,10 @@
 		margin-bottom: 0.75rem;
 		font-size: 1rem;
 		color: #666;
+	}
+
+	.table-wrapper {
+		overflow-x: auto;
 	}
 
 	table {
@@ -750,10 +758,8 @@
 			font-size: 1.5rem;
 		}
 
-		/* Make tables scrollable */
+		/* Tables scroll via wrapper */
 		table {
-			display: block;
-			overflow-x: auto;
 			white-space: nowrap;
 		}
 

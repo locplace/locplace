@@ -92,7 +92,6 @@ func (s *Scanner) runHeartbeat(ctx context.Context) {
 	log.Printf("Heartbeat started: interval=%s", s.config.HeartbeatInterval)
 
 	var consecutiveErrors int
-	var lastErrorLogged time.Time
 
 	for {
 		select {
@@ -103,14 +102,13 @@ func (s *Scanner) runHeartbeat(ctx context.Context) {
 			activeDomains := s.tracker.List()
 			if err := s.coordinator.Heartbeat(ctx, activeDomains); err != nil {
 				consecutiveErrors++
-				// Log on first error, then rate limit to every 30 seconds
-				if consecutiveErrors == 1 || time.Since(lastErrorLogged) > 30*time.Second {
-					log.Printf("Heartbeat error: %v (consecutive errors: %d)", err, consecutiveErrors)
-					lastErrorLogged = time.Now()
+				if consecutiveErrors == 1 {
+					// Log only on first error (entering error state)
+					log.Printf("Heartbeat error: %v (entering backoff)", err)
 				}
 			} else {
 				if consecutiveErrors > 0 {
-					log.Printf("Heartbeat recovered after %d consecutive errors", consecutiveErrors)
+					log.Printf("Heartbeat recovered after %d errors", consecutiveErrors)
 				}
 				consecutiveErrors = 0
 				log.Printf("Heartbeat sent: %d active domains", len(activeDomains))
