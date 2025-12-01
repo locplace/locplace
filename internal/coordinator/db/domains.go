@@ -30,6 +30,7 @@ func (db *DB) GetDomainsToScan(ctx context.Context, clientID, sessionID string, 
 	defer tx.Rollback(ctx) //nolint:errcheck // Rollback after commit returns error, which is expected
 
 	// Build query based on rescan interval
+	// Priority order: queued_at DESC (bumped first), then last_scanned_at NULLS FIRST (unscanned), then created_at
 	var rows pgx.Rows
 	if rescanInterval > 0 {
 		// Include domains not scanned within the rescan interval
@@ -40,7 +41,7 @@ func (db *DB) GetDomainsToScan(ctx context.Context, clientID, sessionID string, 
 				SELECT 1 FROM active_scans s WHERE s.root_domain_id = rd.id
 			)
 			AND (rd.last_scanned_at IS NULL OR rd.last_scanned_at < NOW() - $2::interval)
-			ORDER BY rd.last_scanned_at NULLS FIRST, rd.created_at
+			ORDER BY rd.queued_at DESC NULLS LAST, rd.last_scanned_at NULLS FIRST, rd.created_at
 			LIMIT $1
 			FOR UPDATE OF rd SKIP LOCKED
 		`, count, rescanInterval.String())
@@ -53,7 +54,7 @@ func (db *DB) GetDomainsToScan(ctx context.Context, clientID, sessionID string, 
 				SELECT 1 FROM active_scans s WHERE s.root_domain_id = rd.id
 			)
 			AND rd.last_scanned_at IS NULL
-			ORDER BY rd.created_at
+			ORDER BY rd.queued_at DESC NULLS LAST, rd.created_at
 			LIMIT $1
 			FOR UPDATE OF rd SKIP LOCKED
 		`, count)

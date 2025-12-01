@@ -145,3 +145,10 @@ export async function addDomainsToSet(
 	});
 	return response.json();
 }
+
+export async function bumpDomainSet(setId: string): Promise<{ bumped: number }> {
+	const response = await adminFetch(`/api/admin/domain-sets/${setId}/bump`, {
+		method: 'POST'
+	});
+	return response.json();
+}

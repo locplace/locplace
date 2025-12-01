@@ -54,6 +54,7 @@ func NewServer(database *db.DB, cfg Config) http.Handler {
 		r.Post("/domain-sets", adminHandlers.CreateDomainSet)
 		r.Delete("/domain-sets/{id}", adminHandlers.DeleteDomainSet)
 		r.Post("/domain-sets/{id}/domains", adminHandlers.AddDomainsToSet)
+		r.Post("/domain-sets/{id}/bump", adminHandlers.BumpDomainSet)
 	})
 
 	// Scanner routes (authenticated with bearer token)

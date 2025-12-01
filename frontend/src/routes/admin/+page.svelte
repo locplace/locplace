@@ -12,6 +12,7 @@
 		createDomainSet,
 		deleteDomainSet,
 		addDomainsToSet,
+		bumpDomainSet,
 		ApiError,
 		type Scanner,
 		type NewScanner,
@@ -197,6 +198,19 @@
 		}
 	}
 
+	async function handleBumpDomainSet(id: string, name: string) {
+		try {
+			const result = await bumpDomainSet(id);
+			alert(`Bumped ${result.bumped} unscanned domain(s) in "${name}" to front of queue`);
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 401) {
+				authenticated = false;
+			} else {
+				alert(e instanceof Error ? e.message : 'Failed to bump domain set');
+			}
+		}
+	}
+
 	// Domain upload
 	async function handleAddDomains() {
 		domainsError = '';
@@ -294,7 +308,7 @@
 							<th>Domains</th>
 							<th>Progress</th>
 							<th>Created</th>
-							<th></th>
+							<th>Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -314,7 +328,14 @@
 									{/if}
 								</td>
 								<td>{formatDate(set.created_at)}</td>
-								<td>
+								<td class="actions">
+									<button
+										class="bump"
+										onclick={() => handleBumpDomainSet(set.id, set.name)}
+										title="Move unscanned domains to front of queue"
+									>
+										Bump
+									</button>
 									<button class="delete" onclick={() => handleDeleteDomainSet(set.id, set.name)}>
 										Delete
 									</button>
@@ -663,6 +684,21 @@
 
 	button.delete:hover {
 		background: #a00;
+	}
+
+	button.bump {
+		background: #f90;
+		font-size: 0.875rem;
+		padding: 0.25rem 0.5rem;
+	}
+
+	button.bump:hover {
+		background: #e80;
+	}
+
+	.actions {
+		display: flex;
+		gap: 0.5rem;
 	}
 
 	.error {

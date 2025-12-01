@@ -44,6 +44,11 @@ type AddDomainsToSetResponse struct {
 	Duplicates int `json:"duplicates"`
 }
 
+// BumpDomainSetResponse is the response for POST /api/admin/domain-sets/{id}/bump.
+type BumpDomainSetResponse struct {
+	Bumped int `json:"bumped"`
+}
+
 // RegisterClientRequest is the request body for POST /api/admin/clients.
 type RegisterClientRequest struct {
 	Name string `json:"name"`

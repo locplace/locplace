@@ -204,6 +204,36 @@ func (h *AdminHandlers) AddDomainsToSet(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// BumpDomainSet handles POST /api/admin/domain-sets/{id}/bump.
+func (h *AdminHandlers) BumpDomainSet(w http.ResponseWriter, r *http.Request) {
+	setID := chi.URLParam(r, "id")
+	if setID == "" {
+		writeError(w, "domain set id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the set exists
+	set, err := h.DB.GetDomainSet(r.Context(), setID)
+	if err != nil {
+		writeError(w, "failed to get domain set", http.StatusInternalServerError)
+		return
+	}
+	if set == nil {
+		writeError(w, "domain set not found", http.StatusNotFound)
+		return
+	}
+
+	bumped, err := h.DB.BumpDomainSet(r.Context(), setID)
+	if err != nil {
+		writeError(w, "failed to bump domain set", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, api.BumpDomainSetResponse{
+		Bumped: bumped,
+	})
+}
+
 // Helper functions
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

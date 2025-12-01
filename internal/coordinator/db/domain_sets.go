@@ -112,3 +112,17 @@ func (db *DB) InsertDomainsToSet(ctx context.Context, setID string, domains []st
 	}
 	return inserted, duplicates, nil
 }
+
+// BumpDomainSet bumps all unscanned domains in a set to the front of the queue.
+// Returns the number of domains bumped.
+func (db *DB) BumpDomainSet(ctx context.Context, setID string) (int, error) {
+	tag, err := db.Pool.Exec(ctx, `
+		UPDATE root_domains
+		SET queued_at = NOW()
+		WHERE domain_set_id = $1 AND last_scanned_at IS NULL
+	`, setID)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
