@@ -6,17 +6,39 @@
 	let mapContainer: HTMLDivElement;
 	let map: maplibregl.Map;
 
-	// Info overlay state
-	let isOverlayOpen = true;
+	// Panel states
+	let isAboutOpen = true;
+	let isStatsOpen = false;
 	let isDarkTheme = false;
+
+	// Stats
+	let stats: {
+		total_loc_records: number;
+		unique_root_domains_with_loc: number;
+	} | null = null;
+
+	async function loadStats() {
+		try {
+			const response = await fetch('/api/public/stats');
+			if (response.ok) {
+				stats = await response.json();
+			}
+		} catch (e) {
+			console.error('Failed to load stats:', e);
+		}
+	}
 
 	function getStyleUrl(): string {
 		const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 		return `https://tiles.immich.cloud/v1/style/${isDark ? 'dark' : 'light'}.json`;
 	}
 
-	function toggleOverlay() {
-		isOverlayOpen = !isOverlayOpen;
+	function toggleAbout() {
+		isAboutOpen = !isAboutOpen;
+	}
+
+	function toggleStats() {
+		isStatsOpen = !isStatsOpen;
 	}
 
 	onMount(() => {
@@ -24,8 +46,9 @@
 		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 		isDarkTheme = mediaQuery.matches;
 
-		// Collapse by default on small screens (< 768px)
-		isOverlayOpen = window.innerWidth >= 768;
+		// Collapse about by default on small screens (< 768px)
+		isAboutOpen = window.innerWidth >= 768;
+		// Stats always starts collapsed
 
 		map = new maplibregl.Map({
 			container: mapContainer,
@@ -48,6 +71,9 @@
 		map.on('load', async () => {
 			await loadLOCRecords();
 		});
+
+		// Load stats
+		loadStats();
 
 		return () => {
 			mediaQuery.removeEventListener('change', handleThemeChange);
@@ -136,27 +162,48 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="info-overlay" class:collapsed={!isOverlayOpen} class:dark={isDarkTheme}>
-	<div class="header" onclick={toggleOverlay}>
-		<span class="title">About LOC.place</span>
-		<span class="toggle-icon">{isOverlayOpen ? '−' : '+'}</span>
+<div class="panels-container" class:dark={isDarkTheme}>
+	<div class="panel" class:collapsed={!isAboutOpen}>
+		<div class="panel-header" onclick={toggleAbout}>
+			<span class="title">About LOC.place</span>
+			<span class="toggle-icon">{isAboutOpen ? '−' : '+'}</span>
+		</div>
+		<div class="panel-content">
+			<p>
+				As one of the old, core pieces internet infrastructure, the DNS system has many obscure and forgotten corners.
+				One of those is the <a href="https://en.wikipedia.org/wiki/LOC_record">LOC record</a>, which ties a domain name
+				to a set of geographical coordinates.
+				There are only a few thousand of these records in the entirety of DNS, making it feasible to map all of them.
+			</p>
+			<p>
+				This effort would not have been possible without tb0hdan's <a href="https://github.com/tb0hdan/domains/">list of domains</a>,
+				or without my colleagues taking it as a personal challenge to run as many scanners as they could.
+			</p>
+			<p>
+				You can find the source code on <a href="https://github.com/locplace/locplace">github</a>.
+				If you have any questions, remarks, or you just want to say hi, don't hesitate to <a href="mailto:contact@loc.place">email me</a>.
+			</p>
+		</div>
 	</div>
-	<div class="content">
-		<p>
-			As one of the old, core pieces internet infrastructure, the DNS system has many obscure and forgotten corners.
-			One of those is the <a href="https://en.wikipedia.org/wiki/LOC_record">LOC record</a>, which ties a domain name
-			to a set of geographical coordinates.
-			There are only a few thousand of these records in the entirety of DNS, making it feasible to map all of them.
-		</p>
-		<p>
-			This effort would not have been possible without tb0hdan's <a href="https://github.com/tb0hdan/domains/">list of domains</a>,
-			or without my colleagues taking it as a personal challenge to run as many scanners as they could.
-		</p>
-		<p>
-			You can find the source code on <a href="https://github.com/locplace/locplace">github</a>. 
-			If you have any questions, remarks, or you just want to say hi, don't hesitate to <a href="mailto:contact@loc.place">email me</a>.
-		</p>
+
+	{#if stats}
+	<div class="panel" class:collapsed={!isStatsOpen}>
+		<div class="panel-header" onclick={toggleStats}>
+			<span class="title">Statistics</span>
+			<span class="toggle-icon">{isStatsOpen ? '−' : '+'}</span>
+		</div>
+		<div class="panel-content stats-content">
+			<div class="stat-row">
+				<span class="stat-label">LOC records</span>
+				<span class="stat-value">{stats.total_loc_records.toLocaleString()}</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">Unique domains</span>
+				<span class="stat-value">{stats.unique_root_domains_with_loc.toLocaleString()}</span>
+			</div>
+		</div>
 	</div>
+	{/if}
 </div>
 
 <style>
@@ -165,28 +212,44 @@
 		overflow: hidden;
 	}
 
-	.info-overlay {
+	.panels-container {
 		position: absolute;
 		top: 10px;
 		left: 10px;
 		max-width: 320px;
 		width: calc(100vw - 20px);
-		background: rgba(255, 255, 255, 0.9);
-		backdrop-filter: blur(8px);
-		border-radius: 8px;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 		z-index: 1000;
-		overflow: hidden;
-		transition: max-width 0.2s ease;
+		display: flex;
+		flex-direction: column;
+		gap: 0;
 	}
 
-	.info-overlay.dark {
+	.panel {
+		background: rgba(255, 255, 255, 0.9);
+		backdrop-filter: blur(8px);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+		overflow: hidden;
+	}
+
+	.panel:first-child {
+		border-radius: 8px 8px 0 0;
+	}
+
+	.panel:last-child {
+		border-radius: 0 0 8px 8px;
+	}
+
+	.panel:only-child {
+		border-radius: 8px;
+	}
+
+	.panels-container.dark .panel {
 		background: rgba(30, 30, 30, 0.9);
 		color: #e0e0e0;
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 	}
 
-	.header {
+	.panel-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -198,11 +261,11 @@
 		border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 	}
 
-	.info-overlay.dark .header {
+	.panels-container.dark .panel-header {
 		border-bottom-color: rgba(255, 255, 255, 0.1);
 	}
 
-	.info-overlay.collapsed .header {
+	.panel.collapsed .panel-header {
 		border-bottom: none;
 	}
 
@@ -212,7 +275,7 @@
 		opacity: 0.6;
 	}
 
-	.content {
+	.panel-content {
 		padding: 12px 14px;
 		font-size: 13px;
 		line-height: 1.5;
@@ -221,36 +284,58 @@
 		transition: max-height 0.2s ease, padding 0.2s ease, opacity 0.2s ease;
 	}
 
-	.info-overlay.collapsed .content {
+	.panel.collapsed .panel-content {
 		max-height: 0;
 		padding-top: 0;
 		padding-bottom: 0;
 		opacity: 0;
 	}
 
-	.content p {
+	.panel-content p {
 		margin: 0 0 10px 0;
 	}
 
-	.content p:last-child {
+	.panel-content p:last-child {
 		margin-bottom: 0;
 	}
 
-	.content a {
+	.panel-content a {
 		color: #2563eb;
 		text-decoration: none;
 	}
 
-	.content a:hover {
+	.panel-content a:hover {
 		text-decoration: underline;
 	}
 
-	.info-overlay.dark .content a {
+	.panels-container.dark .panel-content a {
 		color: #60a5fa;
 	}
 
+	/* Stats panel specific styles */
+	.stats-content {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.stat-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.stat-label {
+		opacity: 0.8;
+	}
+
+	.stat-value {
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+
 	@media (max-width: 400px) {
-		.info-overlay {
+		.panels-container {
 			max-width: calc(100vw - 20px);
 		}
 	}
