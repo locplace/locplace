@@ -89,4 +89,36 @@
 		border-radius: 4px;
 		word-break: break-all;
 	}
+
+	@media (prefers-color-scheme: dark) {
+		.popup {
+			color: #e0e0e0;
+		}
+
+		.popup-title {
+			color: #e0e0e0;
+		}
+
+		.popup-header {
+			color: #aaa;
+			border-bottom-color: #444;
+		}
+
+		.popup-list li {
+			color: #e0e0e0;
+		}
+
+		.popup-domain {
+			color: #aaa;
+		}
+
+		.popup-coords {
+			color: #bbb;
+		}
+
+		.popup-raw {
+			background: #333;
+			color: #ddd;
+		}
+	}
 </style>

@@ -9,6 +9,7 @@
 	// Panel states
 	let isAboutOpen = true;
 	let isStatsOpen = false;
+	let isSearchOpen = false;
 	let isDarkTheme = false;
 
 	// Stats
@@ -16,6 +17,19 @@
 		total_loc_records: number;
 		unique_root_domains_with_loc: number;
 	} | null = null;
+
+	// Search state
+	let searchQuery = '';
+	let searchTimeout: ReturnType<typeof setTimeout>;
+	let fullGeoJSON: GeoJSON.FeatureCollection | null = null;
+
+	interface FQDNEntry {
+		fqdn: string;
+		feature: GeoJSON.Feature;
+		lastSeenAt: Date;
+	}
+	let fqdnIndex: FQDNEntry[] = [];
+	let displayedFQDNs: FQDNEntry[] = [];
 
 	async function loadStats() {
 		try {
@@ -26,6 +40,105 @@
 		} catch (e) {
 			console.error('Failed to load stats:', e);
 		}
+	}
+
+	function toggleSearch() {
+		isSearchOpen = !isSearchOpen;
+	}
+
+	function buildFQDNIndex(geojson: GeoJSON.FeatureCollection) {
+		const entries: FQDNEntry[] = [];
+		for (const feature of geojson.features) {
+			const props = feature.properties;
+			const fqdns = typeof props?.fqdns === 'string' ? JSON.parse(props.fqdns) : props?.fqdns || [];
+			const lastSeenAt = props?.last_seen_at ? new Date(props.last_seen_at) : new Date(0);
+
+			for (const fqdn of fqdns) {
+				entries.push({ fqdn, feature, lastSeenAt });
+			}
+		}
+		// Sort by lastSeenAt descending (newest first)
+		entries.sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime());
+		return entries;
+	}
+
+	function handleSearchInput(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		searchQuery = value;
+
+		// Debounce the filtering
+		clearTimeout(searchTimeout);
+		searchTimeout = setTimeout(() => {
+			applyFilter(value);
+		}, 150);
+	}
+
+	function applyFilter(query: string) {
+		const lowerQuery = query.toLowerCase().trim();
+
+		if (!lowerQuery) {
+			// No query: show recent FQDNs, all points on map
+			displayedFQDNs = fqdnIndex.slice(0, 50);
+			if (fullGeoJSON && map.getSource('loc-records')) {
+				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(fullGeoJSON);
+			}
+		} else {
+			// Filter FQDNs
+			const matchingEntries = fqdnIndex.filter(entry =>
+				entry.fqdn.toLowerCase().includes(lowerQuery)
+			);
+			displayedFQDNs = matchingEntries.slice(0, 50);
+
+			// Filter map to only show features with matching FQDNs
+			if (fullGeoJSON && map.getSource('loc-records')) {
+				const matchingFeatures = new Set(matchingEntries.map(e => e.feature));
+				const filteredGeoJSON: GeoJSON.FeatureCollection = {
+					type: 'FeatureCollection',
+					features: fullGeoJSON.features.filter(f => matchingFeatures.has(f))
+				};
+				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(filteredGeoJSON);
+			}
+		}
+	}
+
+	function selectFQDN(entry: FQDNEntry) {
+		const coords = (entry.feature.geometry as GeoJSON.Point).coordinates as [number, number];
+		const props = entry.feature.properties;
+
+		// Zoom to location
+		map.flyTo({
+			center: coords,
+			zoom: 12,
+			duration: 1000
+		});
+
+		// Open popup after flying
+		setTimeout(() => {
+			const fqdns = typeof props?.fqdns === 'string' ? JSON.parse(props.fqdns) : props?.fqdns || [];
+			const rootDomains = typeof props?.root_domains === 'string' ? JSON.parse(props.root_domains) : props?.root_domains || [];
+
+			const container = document.createElement('div');
+			mount(MapPopup, {
+				target: container,
+				props: {
+					fqdns,
+					rootDomains,
+					latitude: coords[1],
+					longitude: coords[0],
+					altitudeM: props?.altitude_m || 0,
+					rawRecord: props?.raw_record || ''
+				}
+			});
+
+			// Close existing popups
+			const existingPopups = document.querySelectorAll('.maplibregl-popup');
+			existingPopups.forEach(p => p.remove());
+
+			new maplibregl.Popup()
+				.setLngLat(coords)
+				.setDOMContent(container)
+				.addTo(map);
+		}, 1000);
 	}
 
 	function getStyleUrl(): string {
@@ -86,7 +199,18 @@
 			const response = await fetch('/api/public/records.geojson');
 			if (!response.ok) throw new Error('Failed to fetch records');
 
-			const geojson = await response.json();
+			const geojson: GeoJSON.FeatureCollection = await response.json();
+
+			// Store for filtering and build search index
+			fullGeoJSON = geojson;
+			fqdnIndex = buildFQDNIndex(geojson);
+			displayedFQDNs = fqdnIndex.slice(0, 50);
+
+			// Add or update the source
+			if (map.getSource('loc-records')) {
+				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(geojson);
+				return;
+			}
 
 			map.addSource('loc-records', {
 				type: 'geojson',
@@ -148,7 +272,8 @@
 			if (geojson.features.length > 0) {
 				const bounds = new maplibregl.LngLatBounds();
 				for (const feature of geojson.features) {
-					bounds.extend(feature.geometry.coordinates as [number, number]);
+					const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+					bounds.extend(coords);
 				}
 				map.fitBounds(bounds, { padding: 50, maxZoom: 10 });
 			}
@@ -204,6 +329,38 @@
 		</div>
 	</div>
 	{/if}
+
+	<div class="panel" class:collapsed={!isSearchOpen}>
+		<div class="panel-header" onclick={toggleSearch}>
+			<span class="title">Search</span>
+			<span class="toggle-icon">{isSearchOpen ? '−' : '+'}</span>
+		</div>
+		<div class="panel-content search-content">
+			<div class="search-input-wrapper">
+				<input
+					type="text"
+					placeholder="Search FQDNs..."
+					value={searchQuery}
+					oninput={handleSearchInput}
+					class="search-input"
+				/>
+				{#if searchQuery}
+					<button class="clear-search" onclick={() => { searchQuery = ''; applyFilter(''); }}>×</button>
+				{/if}
+			</div>
+			<div class="fqdn-list">
+				{#if displayedFQDNs.length === 0}
+					<div class="no-results">No matching FQDNs</div>
+				{:else}
+					{#each displayedFQDNs as entry}
+						<button class="fqdn-item" onclick={() => selectFQDN(entry)}>
+							{entry.fqdn}
+						</button>
+					{/each}
+				{/if}
+			</div>
+		</div>
+	</div>
 </div>
 
 <style>
@@ -338,5 +495,111 @@
 		.panels-container {
 			max-width: calc(100vw - 20px);
 		}
+	}
+
+	/* Search panel styles */
+	.search-content {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.search-input {
+		width: 100%;
+		padding: 8px 10px;
+		border: 1px solid rgba(0, 0, 0, 0.2);
+		border-radius: 4px;
+		font-size: 13px;
+		background: rgba(255, 255, 255, 0.8);
+		box-sizing: border-box;
+	}
+
+	.search-input:focus {
+		outline: none;
+		border-color: #2563eb;
+	}
+
+	.panels-container.dark .search-input {
+		background: rgba(50, 50, 50, 0.8);
+		border-color: rgba(255, 255, 255, 0.2);
+		color: #e0e0e0;
+	}
+
+	.panels-container.dark .search-input:focus {
+		border-color: #60a5fa;
+	}
+
+	.search-input-wrapper {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.search-input-wrapper .search-input {
+		padding-right: 28px;
+	}
+
+	.clear-search {
+		position: absolute;
+		right: 6px;
+		background: none;
+		border: none;
+		font-size: 16px;
+		line-height: 1;
+		cursor: pointer;
+		color: #888;
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	.clear-search:hover {
+		background: rgba(0, 0, 0, 0.1);
+		color: #444;
+	}
+
+	.panels-container.dark .clear-search {
+		color: #999;
+	}
+
+	.panels-container.dark .clear-search:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: #ddd;
+	}
+
+	.fqdn-list {
+		display: flex;
+		flex-direction: column;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+
+	.fqdn-item {
+		display: block;
+		width: 100%;
+		padding: 6px 8px;
+		text-align: left;
+		background: none;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		font-size: 12px;
+		font-family: monospace;
+		color: inherit;
+		box-sizing: border-box;
+	}
+
+	.fqdn-item:hover {
+		background: rgba(0, 0, 0, 0.08);
+	}
+
+	.panels-container.dark .fqdn-item:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.no-results {
+		padding: 8px;
+		text-align: center;
+		opacity: 0.6;
+		font-size: 12px;
 	}
 </style>
