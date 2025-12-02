@@ -4,6 +4,41 @@
 
 import type { FQDNEntry, LocationEntry } from './types';
 
+/** Parsed search query with include and exclude terms */
+export interface ParsedQuery {
+	includeTerms: string[];
+	excludeTerms: string[];
+}
+
+/**
+ * Parses a search query into include and exclude terms.
+ * Terms prefixed with - are exclude terms.
+ * Example: "cloudflare -microsoft -amazon" → include: ["cloudflare"], exclude: ["microsoft", "amazon"]
+ */
+export function parseSearchQuery(query: string): ParsedQuery {
+	const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+	const includeTerms: string[] = [];
+	const excludeTerms: string[] = [];
+
+	for (const term of terms) {
+		if (term.startsWith('-') && term.length > 1) {
+			excludeTerms.push(term.slice(1));
+		} else if (!term.startsWith('-')) {
+			includeTerms.push(term);
+		}
+	}
+
+	return { includeTerms, excludeTerms };
+}
+
+/**
+ * Checks if a string matches any of the given terms (case-insensitive substring match)
+ */
+export function matchesAny(value: string, terms: string[]): boolean {
+	const lower = value.toLowerCase();
+	return terms.some((term) => lower.includes(term.toLowerCase()));
+}
+
 /**
  * Parses a JSON array from GeoJSON properties, handling both string and array formats
  */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFQDNIndex, buildLocationIndex } from './search';
+import { buildFQDNIndex, buildLocationIndex, parseSearchQuery, matchesAny } from './search';
 
 const mockFeature = (fqdns: string[], rootDomains: string[], lastSeenAt: string) => ({
 	type: 'Feature' as const,
@@ -177,5 +177,75 @@ describe('buildLocationIndex', () => {
 
 		expect(index[0].rootDomain).toBe('new.com');
 		expect(index[1].rootDomain).toBe('old.com');
+	});
+});
+
+describe('parseSearchQuery', () => {
+	it('parses simple include terms', () => {
+		const result = parseSearchQuery('cloudflare');
+		expect(result.includeTerms).toEqual(['cloudflare']);
+		expect(result.excludeTerms).toEqual([]);
+	});
+
+	it('parses multiple include terms', () => {
+		const result = parseSearchQuery('cloudflare amazon');
+		expect(result.includeTerms).toEqual(['cloudflare', 'amazon']);
+		expect(result.excludeTerms).toEqual([]);
+	});
+
+	it('parses exclude terms with - prefix', () => {
+		const result = parseSearchQuery('-microsoft');
+		expect(result.includeTerms).toEqual([]);
+		expect(result.excludeTerms).toEqual(['microsoft']);
+	});
+
+	it('parses mixed include and exclude terms', () => {
+		const result = parseSearchQuery('cloudflare -microsoft -amazon');
+		expect(result.includeTerms).toEqual(['cloudflare']);
+		expect(result.excludeTerms).toEqual(['microsoft', 'amazon']);
+	});
+
+	it('handles empty query', () => {
+		const result = parseSearchQuery('');
+		expect(result.includeTerms).toEqual([]);
+		expect(result.excludeTerms).toEqual([]);
+	});
+
+	it('handles whitespace-only query', () => {
+		const result = parseSearchQuery('   ');
+		expect(result.includeTerms).toEqual([]);
+		expect(result.excludeTerms).toEqual([]);
+	});
+
+	it('ignores lone - character', () => {
+		const result = parseSearchQuery('- test');
+		expect(result.includeTerms).toEqual(['test']);
+		expect(result.excludeTerms).toEqual([]);
+	});
+
+	it('converts to lowercase', () => {
+		const result = parseSearchQuery('CloudFlare -MICROSOFT');
+		expect(result.includeTerms).toEqual(['cloudflare']);
+		expect(result.excludeTerms).toEqual(['microsoft']);
+	});
+});
+
+describe('matchesAny', () => {
+	it('returns true if value contains any term', () => {
+		expect(matchesAny('sub.cloudflare.com', ['cloudflare'])).toBe(true);
+		expect(matchesAny('test.example.com', ['example', 'other'])).toBe(true);
+	});
+
+	it('returns false if value contains no terms', () => {
+		expect(matchesAny('cloudflare.com', ['microsoft', 'amazon'])).toBe(false);
+	});
+
+	it('is case-insensitive', () => {
+		expect(matchesAny('CloudFlare.com', ['cloudflare'])).toBe(true);
+		expect(matchesAny('cloudflare.com', ['CLOUDFLARE'])).toBe(true);
+	});
+
+	it('returns false for empty terms array', () => {
+		expect(matchesAny('anything.com', [])).toBe(false);
 	});
 });

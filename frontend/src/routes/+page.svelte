@@ -5,7 +5,7 @@
 	import CollapsiblePanel from '$lib/components/CollapsiblePanel.svelte';
 	import type { FQDNEntry, LocationEntry, PublicStats, SearchEntry } from '$lib/types';
 	import { isFQDNEntry } from '$lib/types';
-	import { buildFQDNIndex, buildLocationIndex } from '$lib/search';
+	import { buildFQDNIndex, buildLocationIndex, parseSearchQuery, matchesAny } from '$lib/search';
 
 	let mapContainer: HTMLDivElement;
 	let map: maplibregl.Map;
@@ -54,20 +54,36 @@
 		}, 150);
 	}
 
-	function applyFilter(query: string) {
-		const lowerQuery = query.toLowerCase().trim();
+	function excludeEntry(entry: SearchEntry, event: Event) {
+		event.stopPropagation();
+		const term = isFQDNEntry(entry) ? entry.fqdn : entry.rootDomain;
+		// Add exclusion term to search query
+		const newQuery = searchQuery ? `${searchQuery} -${term}` : `-${term}`;
+		searchQuery = newQuery;
+		applyFilter(newQuery);
+	}
 
-		if (!lowerQuery) {
+	function applyFilter(query: string) {
+		const { includeTerms, excludeTerms } = parseSearchQuery(query);
+		const hasIncludes = includeTerms.length > 0;
+		const hasExcludes = excludeTerms.length > 0;
+
+		if (!hasIncludes && !hasExcludes) {
 			// No query: show recent locations (deduplicated by feature), all points on map
 			displayedEntries = locationIndex.slice(0, 50);
 			if (fullGeoJSON && map.getSource('loc-records')) {
 				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(fullGeoJSON);
 			}
-		} else {
-			// Filter FQDNs (search matches individual FQDNs)
-			const matchingEntries = fqdnIndex.filter((entry) =>
-				entry.fqdn.toLowerCase().includes(lowerQuery)
-			);
+		} else if (hasIncludes) {
+			// Has include terms: filter to matching FQDNs, then apply exclusions
+			let matchingEntries = fqdnIndex.filter((entry) => matchesAny(entry.fqdn, includeTerms));
+
+			if (hasExcludes) {
+				matchingEntries = matchingEntries.filter(
+					(entry) => !matchesAny(entry.fqdn, excludeTerms)
+				);
+			}
+
 			displayedEntries = matchingEntries.slice(0, 50);
 
 			// Filter map to only show features with matching FQDNs
@@ -76,6 +92,27 @@
 				const filteredGeoJSON: GeoJSON.FeatureCollection = {
 					type: 'FeatureCollection',
 					features: fullGeoJSON.features.filter((f) => matchingFeatures.has(f))
+				};
+				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(filteredGeoJSON);
+			}
+		} else {
+			// Only exclude terms: show all locations except excluded
+			const filteredLocations = locationIndex.filter(
+				(entry) => !matchesAny(entry.rootDomain, excludeTerms)
+			);
+			displayedEntries = filteredLocations.slice(0, 50);
+
+			// Filter map: exclude features where ANY fqdn matches exclusion
+			if (fullGeoJSON && map.getSource('loc-records')) {
+				const filteredGeoJSON: GeoJSON.FeatureCollection = {
+					type: 'FeatureCollection',
+					features: fullGeoJSON.features.filter((f) => {
+						const fqdns = f.properties?.fqdns;
+						const fqdnList: string[] =
+							typeof fqdns === 'string' ? JSON.parse(fqdns) : fqdns || [];
+						// Exclude if ANY fqdn matches any exclude term
+						return !fqdnList.some((fqdn) => matchesAny(fqdn, excludeTerms));
+					})
 				};
 				(map.getSource('loc-records') as maplibregl.GeoJSONSource).setData(filteredGeoJSON);
 			}
@@ -340,9 +377,16 @@
 				<div class="no-results">No matching FQDNs</div>
 			{:else}
 				{#each displayedEntries as entry}
-					<button class="fqdn-item" onclick={() => selectEntry(entry)}>
-						{isFQDNEntry(entry) ? entry.fqdn : entry.rootDomain}
-					</button>
+					<div class="fqdn-item">
+						<button class="fqdn-name" onclick={() => selectEntry(entry)}>
+							{isFQDNEntry(entry) ? entry.fqdn : entry.rootDomain}
+						</button>
+						<button
+							class="exclude-btn"
+							onclick={(e) => excludeEntry(entry, e)}
+							title="Hide from map"
+						>−</button>
+					</div>
 				{/each}
 			{/if}
 		</div>
@@ -473,26 +517,61 @@
 	}
 
 	.fqdn-item {
-		display: block;
+		display: flex;
+		align-items: center;
 		width: 100%;
-		padding: 6px 8px;
-		text-align: left;
-		background: none;
-		border: none;
 		border-radius: 3px;
-		cursor: pointer;
-		font-size: 12px;
-		font-family: monospace;
-		color: inherit;
-		box-sizing: border-box;
 	}
 
 	.fqdn-item:hover {
 		background: rgba(0, 0, 0, 0.08);
 	}
 
-	.panels-container.dark .fqdn-item:hover {
+	:global(.panels-container.dark) .fqdn-item:hover {
 		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.fqdn-name {
+		flex: 1;
+		padding: 6px 8px;
+		text-align: left;
+		background: none;
+		border: none;
+		cursor: pointer;
+		font-size: 12px;
+		font-family: monospace;
+		color: inherit;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.exclude-btn {
+		padding: 4px 8px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: #999;
+		font-size: 14px;
+		font-weight: bold;
+		opacity: 0;
+		transition: opacity 0.15s;
+	}
+
+	.fqdn-item:hover .exclude-btn {
+		opacity: 1;
+	}
+
+	.exclude-btn:hover {
+		color: #e74c3c;
+	}
+
+	:global(.panels-container.dark) .exclude-btn {
+		color: #666;
+	}
+
+	:global(.panels-container.dark) .exclude-btn:hover {
+		color: #e74c3c;
 	}
 
 	.no-results {
