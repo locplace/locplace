@@ -400,7 +400,7 @@
 			>
 				<textarea
 					bind:value={manualScanDomains}
-					placeholder={"example.com\nsubdomain.example.org\n# Comments are ignored"}
+					placeholder={'example.com\nsubdomain.example.org\n# Comments are ignored'}
 					rows="5"
 					class="domains-input"
 				></textarea>
