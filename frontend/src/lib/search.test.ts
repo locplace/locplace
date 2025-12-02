@@ -100,7 +100,7 @@ describe('buildLocationIndex', () => {
 		expect(index).toHaveLength(2);
 	});
 
-	it('uses the first root domain as representative', () => {
+	it('shows FQDN directly when there is only one', () => {
 		const geojson: GeoJSON.FeatureCollection = {
 			type: 'FeatureCollection',
 			features: [mockFeature(['sub.example.com'], ['example.com', 'other.com'], '2024-01-01')]
@@ -108,6 +108,21 @@ describe('buildLocationIndex', () => {
 
 		const index = buildLocationIndex(geojson);
 
+		// Single FQDN should be shown directly, not the root domain
+		expect(index[0].rootDomain).toBe('sub.example.com');
+	});
+
+	it('uses root domain when there are multiple FQDNs', () => {
+		const geojson: GeoJSON.FeatureCollection = {
+			type: 'FeatureCollection',
+			features: [
+				mockFeature(['a.example.com', 'b.example.com'], ['example.com'], '2024-01-01')
+			]
+		};
+
+		const index = buildLocationIndex(geojson);
+
+		// Multiple FQDNs should show the root domain
 		expect(index[0].rootDomain).toBe('example.com');
 	});
 

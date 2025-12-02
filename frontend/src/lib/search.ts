@@ -56,9 +56,11 @@ export function buildLocationIndex(geojson: GeoJSON.FeatureCollection): Location
 		const fqdns = parseJsonArray(props?.fqdns);
 		const lastSeenAt = props?.last_seen_at ? new Date(props.last_seen_at) : new Date(0);
 
-		// Use first root domain as representative
-		const rootDomain = rootDomains[0] || fqdns[0] || 'unknown';
-		entries.push({ rootDomain, feature, lastSeenAt, fqdnCount: fqdns.length });
+		// If there's only one FQDN, show it directly instead of the root domain
+		// Otherwise use the root domain as representative
+		const displayName =
+			fqdns.length === 1 ? fqdns[0] : rootDomains[0] || fqdns[0] || 'unknown';
+		entries.push({ rootDomain: displayName, feature, lastSeenAt, fqdnCount: fqdns.length });
 	}
 
 	// Sort by lastSeenAt descending (newest first)
