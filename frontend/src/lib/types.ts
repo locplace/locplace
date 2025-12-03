@@ -29,4 +29,5 @@ export function isFQDNEntry(entry: SearchEntry): entry is FQDNEntry {
 export interface PublicStats {
 	total_loc_records: number;
 	unique_root_domains_with_loc: number;
+	unique_locations: number;
 }

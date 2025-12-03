@@ -115,9 +115,7 @@ describe('buildLocationIndex', () => {
 	it('uses root domain when there are multiple FQDNs', () => {
 		const geojson: GeoJSON.FeatureCollection = {
 			type: 'FeatureCollection',
-			features: [
-				mockFeature(['a.example.com', 'b.example.com'], ['example.com'], '2024-01-01')
-			]
+			features: [mockFeature(['a.example.com', 'b.example.com'], ['example.com'], '2024-01-01')]
 		};
 
 		const index = buildLocationIndex(geojson);

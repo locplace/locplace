@@ -93,8 +93,7 @@ export function buildLocationIndex(geojson: GeoJSON.FeatureCollection): Location
 
 		// If there's only one FQDN, show it directly instead of the root domain
 		// Otherwise use the root domain as representative
-		const displayName =
-			fqdns.length === 1 ? fqdns[0] : rootDomains[0] || fqdns[0] || 'unknown';
+		const displayName = fqdns.length === 1 ? fqdns[0] : rootDomains[0] || fqdns[0] || 'unknown';
 		entries.push({ rootDomain: displayName, feature, lastSeenAt, fqdnCount: fqdns.length });
 	}
 
