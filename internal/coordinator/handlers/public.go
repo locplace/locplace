@@ -109,6 +109,12 @@ func (h *PublicHandlers) GetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	uniqueLocations, err := h.DB.CountUniqueLocations(ctx)
+	if err != nil {
+		writeError(w, "failed to get unique locations", http.StatusInternalServerError)
+		return
+	}
+
 	// Scanner stats - count active sessions (individual scanner instances)
 	activeSessions, err := h.DB.CountActiveSessions(ctx, h.HeartbeatTimeout)
 	if err != nil {
@@ -155,9 +161,11 @@ func (h *PublicHandlers) GetStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Cache-Control", "public, max-age=60")
 	writeJSON(w, http.StatusOK, api.StatsResponse{
 		TotalLOCRecords:          locCount,
 		UniqueRootDomainsWithLOC: uniqueWithLOC,
+		UniqueLocations:          uniqueLocations,
 		ActiveScanners:           activeSessions,
 		DomainFiles: api.DomainFileStats{
 			Total:      fileStats.Total,

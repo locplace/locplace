@@ -115,6 +115,13 @@ func (db *DB) CountUniqueRootDomainsWithLOC(ctx context.Context) (int, error) {
 	return count, err
 }
 
+// CountUniqueLocations returns the number of unique coordinate locations.
+func (db *DB) CountUniqueLocations(ctx context.Context) (int, error) {
+	var count int
+	err := db.Pool.QueryRow(ctx, `SELECT COUNT(DISTINCT (latitude, longitude)) FROM loc_records`).Scan(&count)
+	return count, err
+}
+
 // GetAllLOCRecordsForGeoJSON returns all LOC records for GeoJSON export.
 // Returns records without pagination for map rendering.
 func (db *DB) GetAllLOCRecordsForGeoJSON(ctx context.Context) ([]api.PublicLOCRecord, error) {

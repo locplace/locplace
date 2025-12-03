@@ -167,6 +167,7 @@ type StatsResponse struct {
 	// LOC record stats
 	TotalLOCRecords          int `json:"total_loc_records"`
 	UniqueRootDomainsWithLOC int `json:"unique_root_domains_with_loc"`
+	UniqueLocations          int `json:"unique_locations"`
 
 	// Scanner stats
 	ActiveScanners int `json:"active_scanners"`
