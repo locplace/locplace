@@ -14,6 +14,15 @@ const config = {
 		}),
 		paths: {
 			base: ''
+		},
+		prerender: {
+			handleHttpError: ({ path, message }) => {
+				// Ignore 404s for API routes - they don't exist at build time
+				if (path.startsWith('/api/')) {
+					return;
+				}
+				throw new Error(message);
+			}
 		}
 	}
 };

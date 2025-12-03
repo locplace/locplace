@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, mount } from 'svelte';
+	import { onMount, onDestroy, mount } from 'svelte';
 	import maplibregl from 'maplibre-gl';
 	import MapPopup from '$lib/components/MapPopup.svelte';
 	import CollapsiblePanel from '$lib/components/CollapsiblePanel.svelte';
@@ -18,6 +18,12 @@
 
 	// Stats
 	let stats: PublicStats | null = null;
+
+	// Search indices ready flag (built after map idle for faster initial render)
+	let indicesReady = false;
+
+	// Cleanup function for onDestroy (can't return from async onMount)
+	let cleanup: (() => void) | undefined;
 
 	// Search state
 	let searchQuery = '';
@@ -188,9 +194,7 @@
 			if (response.ok) {
 				const geojson: GeoJSON.FeatureCollection = await response.json();
 				fullGeoJSON = geojson;
-				fqdnIndex = buildFQDNIndex(geojson);
-				locationIndex = buildLocationIndex(geojson);
-				displayedEntries = locationIndex.slice(0, 50);
+				// Note: indices are built after map idle for faster initial render
 
 				// Calculate bounds for initial view
 				if (geojson.features.length > 0) {
@@ -241,10 +245,14 @@
 			}
 		});
 
-		return () => {
+		cleanup = () => {
 			mediaQuery.removeEventListener('change', handleThemeChange);
 			map?.remove();
 		};
+	});
+
+	onDestroy(() => {
+		cleanup?.();
 	});
 
 	function addGeoJSONLayer(geojson: GeoJSON.FeatureCollection, isInitialLoad = false) {
@@ -323,6 +331,14 @@
 				// Fade in the points smoothly
 				map.setPaintProperty('points', 'circle-opacity', 1);
 				map.setPaintProperty('points', 'circle-stroke-opacity', 1);
+
+				// Build search indices now that visual render is complete
+				if (fullGeoJSON && !indicesReady) {
+					fqdnIndex = buildFQDNIndex(fullGeoJSON);
+					locationIndex = buildLocationIndex(fullGeoJSON);
+					displayedEntries = locationIndex.slice(0, 50);
+					indicesReady = true;
+				}
 			});
 		}
 	}
@@ -339,6 +355,7 @@
 			fqdnIndex = buildFQDNIndex(geojson);
 			locationIndex = buildLocationIndex(geojson);
 			displayedEntries = locationIndex.slice(0, 50);
+			indicesReady = true;
 
 			addGeoJSONLayer(geojson, isInitialLoad);
 
@@ -434,7 +451,9 @@
 			{/if}
 		</div>
 		<div class="fqdn-list">
-			{#if displayedEntries.length === 0}
+			{#if !indicesReady}
+				<div class="no-results">Loading...</div>
+			{:else if displayedEntries.length === 0}
 				<div class="no-results">No matching FQDNs</div>
 			{:else}
 				{#each displayedEntries as entry}
