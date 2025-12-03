@@ -27,6 +27,7 @@ import (
 func main() {
 	// Configuration from environment
 	databaseURL := getEnv("DATABASE_URL", "postgres://localhost:5432/locscanner?sslmode=disable")
+	dbMaxConns := parseInt("DB_MAX_CONNS", 0) // 0 = use pgxpool default
 	adminAPIKey := os.Getenv("ADMIN_API_KEY")
 	listenAddr := getEnv("LISTEN_ADDR", ":8080")
 	metricsAddr := getEnv("METRICS_ADDR", ":9090")
@@ -50,7 +51,10 @@ func main() {
 
 	// Connect to database
 	ctx := context.Background()
-	database, err := db.New(ctx, databaseURL)
+	database, err := db.New(ctx, db.Config{
+		URL:      databaseURL,
+		MaxConns: int32(dbMaxConns),
+	})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
