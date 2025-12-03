@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 )
 
 //go:embed build/*
@@ -32,12 +33,32 @@ func Handler() http.Handler {
 		f, err := sub.Open(path[1:]) // Remove leading slash
 		if err != nil {
 			// File not found, serve index.html for SPA routing
+			setCacheHeaders(w, "/index.html")
 			r.URL.Path = "/"
 			fileServer.ServeHTTP(w, r)
 			return
 		}
 		f.Close() //nolint:errcheck // Close error not actionable
 
+		setCacheHeaders(w, path)
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+// setCacheHeaders sets appropriate Cache-Control headers based on the file path.
+func setCacheHeaders(w http.ResponseWriter, path string) {
+	// SvelteKit puts hashed assets in /_app/immutable/ - cache forever
+	if strings.HasPrefix(path, "/_app/immutable/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+
+	// HTML files and other mutable assets - short cache with revalidation
+	if strings.HasSuffix(path, ".html") || path == "/" {
+		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+		return
+	}
+
+	// Other static assets (favicon, etc) - cache for a day
+	w.Header().Set("Cache-Control", "public, max-age=86400")
 }
