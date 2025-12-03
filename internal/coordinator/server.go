@@ -28,6 +28,7 @@ func NewServer(database *db.DB, cfg Config) http.Handler {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RealIP)
+	r.Use(chimw.Compress(5)) // gzip compression level 5 (balanced speed/ratio)
 
 	// Initialize handlers
 	adminHandlers := &handlers.AdminHandlers{
