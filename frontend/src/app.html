@@ -4,9 +4,34 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="data:," />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+		<title>LOC.place - Mapping DNS LOC Records</title>
+		<meta
+			name="description"
+			content="An interactive map of all DNS LOC records on the internet. LOC records tie domain names to geographical coordinates - explore this obscure corner of DNS infrastructure."
+		/>
+
+		<!-- Open Graph -->
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="LOC.place - Mapping DNS LOC Records" />
+		<meta
+			property="og:description"
+			content="An interactive map of all DNS LOC records on the internet. LOC records tie domain names to geographical coordinates - explore this obscure corner of DNS infrastructure."
+		/>
+		<meta property="og:url" content="https://loc.place" />
+
+		<!-- Twitter -->
+		<meta name="twitter:card" content="summary" />
+		<meta name="twitter:title" content="LOC.place - Mapping DNS LOC Records" />
+		<meta
+			name="twitter:description"
+			content="An interactive map of all DNS LOC records on the internet. Explore this obscure corner of DNS infrastructure."
+		/>
+
+		<link rel="canonical" href="https://loc.place" />
+
 		<!-- Preload GeoJSON data - starts fetch before SvelteKit boots -->
 		<link rel="preload" href="/api/public/records.geojson" as="fetch" />
-		<title>LOC.place - Mapping DNS</title>
 		<!-- Critical CSS: prevent white/black flash before stylesheets load -->
 		<style>
 			html,
